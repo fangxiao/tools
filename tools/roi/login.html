@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人物品使用率管理系统 - 登录</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>个人物品使用率管理系统</h1>
+        </header>
+
+        <main>
+            <section class="auth-section">
+                <div class="auth-tabs">
+                    <button class="tab active" data-tab="login">登录</button>
+                    <button class="tab" data-tab="register">注册</button>
+                </div>
+
+                <div class="auth-form" id="login-form">
+                    <h2>登录</h2>
+                    <form id="login-form-content">
+                        <div class="form-group">
+                            <label for="login-username">用户名：</label>
+                            <input type="text" id="login-username" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">密码：</label>
+                            <input type="password" id="login-password" required>
+                        </div>
+                        <button type="submit">登录</button>
+                        <div id="login-error" class="error-message"></div>
+                    </form>
+                </div>
+
+                <div class="auth-form hidden" id="register-form">
+                    <h2>注册</h2>
+                    <form id="register-form-content">
+                        <div class="form-group">
+                            <label for="register-username">用户名：</label>
+                            <input type="text" id="register-username" required>
+                            <small>用户名至少需要3个字符</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="register-password">密码：</label>
+                            <input type="password" id="register-password" required>
+                            <small>密码至少需要6个字符</small>
+                        </div>
+                        <button type="submit">注册</button>
+                        <div id="register-error" class="error-message"></div>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "household-item-usage-management",
+  "version": "1.0.0",
+  "description": "A system to manage and track household item usage rates",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "household",
+    "item",
+    "usage",
+    "management"
+  ],
+  "author": "Developer",
+  "license": "MIT"
+}

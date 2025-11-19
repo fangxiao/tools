@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人工具集</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .reset-password-link {
+            background-color: #28a745;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+        
+        .reset-password-link:hover {
+            background-color: #218838;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>个人工具集</h1>
+            <div class="user-info" id="user-info">
+                <span>欢迎, <span id="username-display"></span></span>
+                <a href="/reset-password.html" class="reset-password-link">重置密码</a>
+                <button id="logout-btn" class="btn-logout">退出登录</button>
+            </div>
+        </header>
+
+        <main class="container">
+            <section class="hero">
+                <h1>更多工具待使用</h1>
+            </section>
+
+            <section class="tools">
+                <div class="tool-grid">
+                    <div class="tool-card">
+                        <h3>物品使用率管理</h3>
+                        <p>管理您的物品，跟踪使用频率，最大化物品价值</p>
+                        <a href="/tools/roi/" class="btn btn-primary">开始使用</a>
+                    </div>
+                    <div class="tool-card">
+                        <h3>运动目标管理</h3>
+                        <p>设定运动目标，记录运动数据，提升健康水平</p>
+                        <a href="/tools/exercise/" class="btn btn-primary">开始使用</a>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/auth.js"></script>
+    <script src="/script.js"></script>
+</body>
+</html>
