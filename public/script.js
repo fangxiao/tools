@@ -6,8 +6,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
     
-    // Display username
-    document.getElementById('username-display').textContent = currentUser.username;
+    // Display username if element exists
+    const usernameDisplay = document.getElementById('username-display');
+    if (usernameDisplay) {
+        usernameDisplay.textContent = currentUser.username;
+    }
     
     // Logout functionality
     const logoutBtn = document.getElementById('logout-btn');
@@ -19,19 +22,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // 导航到指定工具
-function navigateToTool(toolName) {
-    if (!checkAuth()) {
-        return;
-    }
-    
-    switch(toolName) {
+function navigateTo(tool) {
+    switch(tool) {
         case 'roi':
-            window.location.href = '/tools/roi/index.html';
+            window.location.href = '/tools/roi/';
             break;
         case 'exercise':
-            window.location.href = '/tools/exercise/index.html';
+            window.location.href = '/tools/exercise/';
             break;
         default:
-            alert('工具尚未实现');
+            console.warn('Unknown tool:', tool);
     }
 }

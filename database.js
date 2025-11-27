@@ -673,6 +673,11 @@ function getExerciseRecordsByGoal(goalId, userId, callback) {
   db.all(sql, [goalId, userId], callback);
 }
 
+function getExerciseRecordById(recordId, userId, callback) {
+  const sql = 'SELECT * FROM exercise_records WHERE id = ? AND user_id = ?';
+  db.get(sql, [recordId, userId], callback);
+}
+
 function createExerciseRecord(userId, recordData, callback) {
   const createdAt = new Date().toISOString();
   const sql = `INSERT INTO exercise_records 
@@ -688,6 +693,31 @@ function createExerciseRecord(userId, recordData, callback) {
     createdAt
   ];
   db.run(sql, params, callback);
+}
+
+function updateExerciseRecord(recordId, userId, recordData, callback) {
+  const sql = `UPDATE exercise_records SET 
+    exercise_type = ?, value = ?, record_date = ?, note = ?
+    WHERE id = ? AND user_id = ?`;
+  const params = [
+    recordData.exerciseType,
+    recordData.value,
+    recordData.recordDate,
+    recordData.note,
+    recordId,
+    userId
+  ];
+  db.run(sql, params, function(err) {
+    if (err) {
+      return callback(err);
+    }
+    callback(null);
+  });
+}
+
+function deleteExerciseRecord(recordId, userId, callback) {
+  const sql = 'DELETE FROM exercise_records WHERE id = ? AND user_id = ?';
+  db.run(sql, [recordId, userId], callback);
 }
 
 // 访问城市相关操作
@@ -778,7 +808,10 @@ module.exports = {
   updateCurrentWeight,
   getExerciseRecordsByUser,
   getExerciseRecordsByGoal,
+  getExerciseRecordById,
   createExerciseRecord,
+  updateExerciseRecord,
+  deleteExerciseRecord,
   getVisitedCitiesByUser,
   getVisitedCityById,
   getVisitedCityByCityId,

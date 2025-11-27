@@ -38,6 +38,9 @@ const {
   getExerciseRecordsByUser,
   getExerciseRecordsByGoal,
   createExerciseRecord,
+  getExerciseRecordById,
+  updateExerciseRecord,
+  deleteExerciseRecord,
   getVisitedCitiesByUser,
   getVisitedCityById,
   getVisitedCityByCityId,
@@ -93,10 +96,9 @@ app.use((err, req, res, next) => {
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/tools/roi', express.static(path.join(__dirname, 'tools/roi')));
-app.use('/tools/exercise', express.static(path.join(__dirname, 'tools/exercise')));
-app.use('/debug', express.static(path.join(__dirname, 'debug')));
+app.use(express.static('public'));
+app.use('/tools/exercise', express.static('tools/exercise'));
+app.use('/tools/roi', express.static('tools/roi'));
 
 // Routes
 app.get('/', (req, res) => {
@@ -750,6 +752,85 @@ app.get('/api/exercise-records', (req, res) => {
   });
 });
 
+app.get('/api/exercise-records/single/:id', (req, res) => {
+  const { userId } = req.query;
+  const recordId = req.params.id;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '需要提供用户ID' });
+  }
+  
+  getExerciseRecordById(recordId, userId, (err, record) => {
+    if (err) {
+      return res.status(500).json({ error: '获取运动记录失败' });
+    }
+    
+    if (!record) {
+      return res.status(404).json({ error: '运动记录未找到' });
+    }
+    
+    res.json(record);
+  });
+});
+
+// Update an exercise record
+app.put('/api/exercise-records/:id', (req, res) => {
+  const { userId } = req.query;
+  const recordId = req.params.id;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '需要提供用户ID' });
+  }
+  
+  // Check if user exists
+  findUserById(userId, (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: '数据库查询错误' });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    
+    const recordData = {
+      exerciseType: req.body.exerciseType,
+      value: parseFloat(req.body.value),
+      recordDate: req.body.recordDate,
+      note: req.body.note || ''
+    };
+    
+    // 验证必填字段
+    if (!recordData.exerciseType || isNaN(recordData.value) || !recordData.recordDate) {
+      return res.status(400).json({ error: '缺少必要字段' });
+    }
+    
+    updateExerciseRecord(recordId, userId, recordData, (err) => {
+      if (err) {
+        return res.status(500).json({ error: '更新运动记录失败' });
+      }
+      
+      res.json({ message: '运动记录更新成功' });
+    });
+  });
+});
+
+app.delete('/api/exercise-records/:id', (req, res) => {
+  const { userId } = req.query;
+  const recordId = req.params.id;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '需要提供用户ID' });
+  }
+  
+  deleteExerciseRecord(recordId, userId, (err) => {
+    if (err) {
+      return res.status(500).json({ error: '删除运动记录失败' });
+    }
+    
+    res.json({ message: '运动记录删除成功' });
+  });
+});
+
 // Password reset route
 app.put('/api/users/password', authenticateToken, async (req, res) => {
   try {
@@ -998,7 +1079,19 @@ app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    nodeVersion: process.version
+  });
+});
+
+// 服务器状态路由
+app.get('/status', (req, res) => {
+  res.status(200).json({ 
+    status: 'Server is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -1029,6 +1122,7 @@ app.post('/api/items/:id/use', writeLimiter);
 app.post('/api/categories', writeLimiter);
 app.put('/api/categories/:id', writeLimiter);
 app.delete('/api/categories/:id', writeLimiter);
+app.put('/api/users/password', writeLimiter); // 密码重置接口也属于写操作
 
 // 对读操作应用相对宽松的限流
 app.get('/api/items', readLimiter);

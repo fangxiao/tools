@@ -23,3 +23,26 @@ Thumbs.db
 # Editor
 *.swp
 *.swo
+
+# PM2
+.ecosystem.yml
+
+# Backup files
+*.bak
+*.backup
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage reports
+coverage/
+
+# Build outputs
+dist/
+build/
+
+# Certificate files
+*.pem
+*.crt
+*.key

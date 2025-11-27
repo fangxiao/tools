@@ -768,12 +768,15 @@ button:hover {
 /* 运动目标完成印章样式 */
 .stamp-goal-completed {
     background-color: rgba(46, 204, 113, 0.85);
+    top: 10px;
+    right: 10px;
 }
 
-/* 体重目标完成印章样式 */
+/* 减重目标完成印章样式 */
 .stamp-weight-goal-completed {
     background-color: rgba(241, 196, 15, 0.85);
-    top: 70px;
+    top: 10px;
+    right: 80px; /* 调整位置避免与运动完成印章重叠 */
 }
 
 .item-header {
