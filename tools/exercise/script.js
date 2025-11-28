@@ -472,8 +472,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         const fragment = document.createDocumentFragment();
                         
                         goals.forEach(goal => {
+                            // Filter records for this specific goal
+                            const recordsForGoal = records.filter(record => record.goal_id == goal.id);
+                            
                             // Calculate progress
-                            const progress = calculateGoalProgress(goal, records);
+                            const progress = calculateGoalProgress(goal, recordsForGoal);
                             const timeProgress = calculateTimeProgress(goal);
                             
                             // Check goal status
@@ -492,7 +495,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             goalElement.innerHTML = `
                                 <div class="goal-header">
-                                    <div class="goal-title">${goal.title}</div>
+                                    <div class="goal-title">${goal.title}${goal.visibility === 'private' ? ' 🔐' : ''}</div>
                                     ${goalStatus === 'failed' ? '<div class="goal-badge goal-badge-failed">未完成</div>' : ''}
                                     ${showExerciseStamp ? `<div class="stamp stamp-goal-completed${singleStamp ? ' single-stamp' : ''}">运动完成</div>` : ''}
                                     ${showWeightStamp ? `<div class="stamp stamp-weight-goal-completed${singleStamp ? ' single-stamp' : ''}">减重完成</div>` : ''}
@@ -560,8 +563,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button class="btn-use" onclick="showCheckInModal(${goal.id})">打卡</button>
                                     <button class="btn-details" onclick="showDetailsModal(${goal.id})">打卡明细</button>
                                     <button class="btn-summary" onclick="showGoalSummary(${goal.id})">汇总</button>
-                                    <button class="btn-edit" onclick="showEditGoalModal(${goal.id})">编辑</button>
-                                    <button class="btn-delete" onclick="deleteGoal(${goal.id})">删除</button>
+                                    ${goal.user_id == currentUser.id ? `
+                                        <button class="btn-edit" onclick="showEditGoalModal(${goal.id})">编辑</button>
+                                        <button class="btn-delete" onclick="deleteGoal(${goal.id})">删除</button>
+                                    ` : ''}
                                 </div>
                             `;
                             fragment.appendChild(goalElement);
@@ -603,7 +608,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Calculate goal progress
     function calculateGoalProgress(goal, records) {
+        // Filter records to only include those for this specific goal
         const recordsForGoal = records.filter(record => record.goal_id == goal.id);
+        
         const current = recordsForGoal.reduce((sum, record) => {
             // Count all exercises as km for progress calculation with conversion rules
             const exerciseType = exerciseTypes.find(type => type.id === record.exercise_type);
@@ -638,7 +645,8 @@ document.addEventListener('DOMContentLoaded', function() {
         return {
             current: current,
             target: goal.target,
-            percentage: goal.target > 0 ? (current / goal.target) * 100 : 0
+            percentage: goal.target > 0 ? (current / goal.target) * 100 : 0,
+            isCompleted: current >= goal.target // 添加这一行来标识目标是否完成
         };
     }
 
@@ -900,13 +908,76 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     };
 
-    // Close modal
+    // Function to close modal
     window.closeModal = function() {
         const modal = document.querySelector('.modal-overlay');
-        if (modal) {
-            document.body.removeChild(modal);
+        if (modal && modal.parentNode) {
+            modal.parentNode.removeChild(modal);
         }
     };
+
+    // 导出汇总为图片
+    window.exportSummaryToImage = function() {
+        // 先确保html2canvas已加载
+        loadHtml2Canvas()
+            .then(html2canvas => {
+                return html2canvas(document.querySelector('.summary-container'));
+            })
+            .then(canvas => {
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = '运动汇总.png';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+    };
+
+    // 导出记录为CSV
+    window.exportRecordsToCSV = function() {
+        const records = JSON.parse(localStorage.getItem('records')) || [];
+        const csvContent = records.map(record => `${record.date},${record.distance},${record.time}`).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = '运动记录.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // 导出目标为CSV
+    window.exportGoalsToCSV = function() {
+        const goals = JSON.parse(localStorage.getItem('goals')) || [];
+        const csvContent = goals.map(goal => `${goal.date},${goal.distance},${goal.time}`).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = '运动目标.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // 显示警告信息
+    window.showAlert = function(message, type) {
+        const alertContainer = document.querySelector('.alert-container');
+        const alertElement = document.createElement('div');
+        alertElement.className = `alert ${type}`;
+        alertElement.textContent = message;
+        alertContainer.appendChild(alertElement);
+
+        setTimeout(() => {
+            alertContainer.removeChild(alertElement);
+        }, 3000);
+    };
+
+    // 初始化页面
+    window.onload = function() {
+        loadGoals();
+        loadRecords();
+    };
+
 
     // Delete goal
     window.deleteGoal = function(goalId) {
@@ -1194,6 +1265,65 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Save edited goal
+    function saveEditedGoal() {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
+        const goalId = document.getElementById('edit-goal-id')?.value;
+        const title = document.getElementById('edit-goal-title')?.value;
+        const target = parseFloat(document.getElementById('edit-goal-target')?.value);
+        const startDate = document.getElementById('edit-goal-start-date')?.value;
+        const endDate = document.getElementById('edit-goal-end-date')?.value;
+        const targetWeight = parseFloat(document.getElementById('edit-target-weight')?.value) || null;
+        const currentWeight = parseFloat(document.getElementById('edit-current-weight')?.value) || null;
+        const visibility = document.getElementById('edit-goal-visibility')?.value || 'private';
+        
+        if (!title || isNaN(target) || !startDate || !endDate) {
+            showAlert('请填写所有必填字段', 'error');
+            return;
+        }
+        
+        // Create goal data
+        const goalData = {
+            title: title,
+            target: target,
+            startDate: startDate,
+            endDate: endDate,
+            targetWeight: targetWeight,
+            currentWeight: currentWeight,
+            visibility: visibility
+        };
+        
+        // Send update to server
+        fetch(`/api/exercise-goals/${goalId}?userId=${currentUser.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(goalData)
+        })
+        .then(response => {
+            if (response.ok) {
+                // Close modal
+                closeModal();
+                
+                // Refresh display
+                displayGoals();
+                
+                showAlert('目标更新成功！', 'success');
+            } else {
+                return response.json().then(data => {
+                    throw new Error(data.error || '更新目标失败');
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error updating goal:', error);
+            showAlert('更新目标失败: ' + (error.message || '未知错误'), 'error');
+        });
+    }
+
     // Add event listeners for period change
     if (goalPeriodSelect) {
         goalPeriodSelect.addEventListener('change', function() {
@@ -1216,6 +1346,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             
             const period = document.getElementById('goal-period')?.value;
+            const visibility = document.getElementById('goal-visibility')?.value || 'private';
             
             const goalData = {
                 title: document.getElementById('goal-title')?.value,
@@ -1225,7 +1356,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 endDate: document.getElementById('goal-end-date')?.value,
                 initialWeight: parseFloat(document.getElementById('initial-weight')?.value) || null,
                 targetWeight: parseFloat(document.getElementById('target-weight')?.value) || null,
-                currentWeight: parseFloat(document.getElementById('current-weight')?.value) || null
+                currentWeight: parseFloat(document.getElementById('current-weight')?.value) || null,
+                visibility: visibility // 添加可见性字段
             };
             
             // Validate required fields
@@ -1405,6 +1537,22 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Show loading state
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>运动目标总结</h3>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
         // Load goals and records
         Promise.all([
             fetch(`/api/exercise-goals?userId=${currentUser.id}`).then(response => {
@@ -1464,6 +1612,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Calculate goal progress
             const progress = calculateGoalProgress(goal, records);
+            
+            // Check if weight goal is completed
+            const isWeightGoalCompleted = (goal.initial_weight && goal.current_weight && goal.target_weight) && 
+                                          ((Math.abs(goal.initial_weight - goal.current_weight) / Math.abs(goal.initial_weight - goal.target_weight)) * 100) >= 100;
+                                          
+            // Check if exercise goal is completed
+            const isExerciseGoalCompleted = progress.current >= goal.target;
             
             // Calculate total time considering unit conversions
             let totalTimeValue = 0;
@@ -1533,222 +1688,218 @@ document.addEventListener('DOMContentLoaded', function() {
                 userData.distanceToTarget = Math.abs(goal.current_weight - goal.target_weight);
             }
             
-            // Get AI-powered recommendations
-            return getAIRecommendations(userData).then(aiRecommendations => {
-                // Create modal
-                const modal = document.createElement('div');
-                modal.className = 'modal-overlay';
-                
-                let summaryHTML = `
-                    <div class="modal">
-                        <div class="modal-header">
-                            <h3>运动目标总结</h3>
-                            <button class="btn-export-image" id="export-image-btn">生成图片</button>
-                            <button class="modal-close" onclick="closeModal()">&times;</button>
-                        </div>
-                        <div class="modal-body">
-                            <div class="summary-section">
-                                <h4>🎯 目标进度</h4>
-                                <div class="summary-stats">
-                                    <div class="stat-item">
-                                        <div class="stat-label">目标名称</div>
-                                        <div class="stat-value">${goal.title || '未命名目标'}</div>
+            // Get AI-powered recommendations from server
+            return fetch(`/api/exercise-goals/${goalId}/recommendations?userId=${currentUser.id}`)
+                .then(response => response.json())
+                .then(aiData => {
+                    // Create modal
+                    const modal = document.createElement('div');
+                    modal.className = 'modal-overlay';
+                    
+                    let summaryHTML = `
+                        <div class="modal">
+                            <div class="modal-header">
+                                <h3>${goal.title} - 汇总</h3>
+                                ${isExerciseGoalCompleted ? '<div class="stamp stamp-goal-completed">运动完成</div>' : ''}
+                                ${isWeightGoalCompleted ? '<div class="stamp stamp-weight-goal-completed">减重完成</div>' : ''}
+                                <button class="modal-close" onclick="closeModal()">&times;</button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="summary-section">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                        <h4 style="margin: 0;">🎯 目标进度</h4>
+                                        <button id="export-image-btn" class="btn-use" style="padding: 6px 12px; font-size: 13px;">导出图片</button>
                                     </div>
-                                    <div class="stat-item">
-                                        <div class="stat-label">完成度</div>
-                                        <div class="stat-value">${progress.percentage ? progress.percentage.toFixed(1) : '0.0'}%</div>
-                                    </div>
-                                    <div class="stat-item">
-                                        <div class="stat-label">状态</div>
-                                        <div class="stat-value">
-                                            ${(progress.isCompleted !== undefined) ? 
-                                                (progress.isCompleted ? 
-                                                    '<span class="goal-status-completed">已完成</span>' : 
-                                                    '<span class="goal-status-in-progress">进行中</span>') : 
-                                                '<span class="goal-status-unknown">未知</span>'}
+                                    <div class="summary-stats">
+                                        <div class="stat-item">
+                                            <div class="stat-label">目标名称</div>
+                                            <div class="stat-value">${goal.title}</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">完成度</div>
+                                            <div class="stat-value">${progress.percentage.toFixed(1)}%</div>
+                                        </div>
+                                        <div class="stat-item">
+                                            <div class="stat-label">状态</div>
+                                            <div class="stat-value">
+                                                ${progress.isCompleted ? 
+                                                    '<span class="goal-status-completed">✅ 已完成</span>' : 
+                                                    (new Date() > new Date(goal.end_date) ? 
+                                                        '<span class="goal-status-expired">❌ 已过期</span>' : 
+                                                        '<span class="goal-status-active">⏳ 进行中</span>')}
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div class="goal-progress-container">
-                                    <div class="goal-progress-label">目标进度</div>
-                                    <div class="goal-progress-bar">
-                                        <div class="goal-progress-fill" style="width: ${Math.min(progress.percentage || 0, 100)}%"></div>
-                                    </div>
+                                <div class="goal-progress-bar">
+                                    <div class="goal-progress-fill" style="width: ${Math.min(progress.percentage, 100)}%"></div>
                                 </div>
                             </div>
                             
-                            ${(goal.initial_weight || goal.current_weight || goal.target_weight) ? `
+                            ${goal.initial_weight && goal.current_weight && goal.target_weight ? `
                             <div class="summary-section">
-                                <h4>⚖️ 体重变化情况</h4>
+                                <h4>⚖️ 体重目标</h4>
                                 <div class="summary-stats">
-                                    ${goal.initial_weight ? `
                                     <div class="stat-item">
                                         <div class="stat-label">初始体重</div>
                                         <div class="stat-value">${goal.initial_weight} kg</div>
-                                    </div>` : ''}
-                                    ${goal.current_weight ? `
+                                    </div>
                                     <div class="stat-item">
                                         <div class="stat-label">当前体重</div>
                                         <div class="stat-value">${goal.current_weight} kg</div>
-                                    </div>` : ''}
-                                    ${goal.target_weight ? `
+                                    </div>
                                     <div class="stat-item">
                                         <div class="stat-label">目标体重</div>
                                         <div class="stat-value">${goal.target_weight} kg</div>
-                                    </div>` : ''}
+                                    </div>
                                 </div>
                                 
-                                ${(goal.initial_weight && goal.current_weight && goal.target_weight) ? `
-                                <div class="weight-progress-container">
-                                    <div class="weight-progress-label">体重目标进度</div>
-                                    <div class="weight-progress-bar">
-                                        <div class="weight-progress-fill" style="width: ${Math.min((Math.abs(goal.initial_weight - goal.current_weight) / Math.abs(goal.initial_weight - goal.target_weight)) * 100, 100)}%"></div>
+                                <div class="goal-progress-container">
+                                    <div class="goal-progress-label">体重目标进度</div>
+                                    <div class="goal-progress-bar">
+                                        <div class="goal-progress-fill weight-progress" style="width: ${Math.min((Math.abs(goal.initial_weight - goal.current_weight) / Math.abs(goal.initial_weight - goal.target_weight)) * 100, 100)}%"></div>
                                     </div>
-                                </div>` : ''}
-                            </div>
-                            ` : ''}
+                                    <div class="weight-change-info">
+                                        ${goal.initial_weight > goal.current_weight ? 
+                                          `📉 已减重 ${(goal.initial_weight - goal.current_weight).toFixed(1)} kg` : 
+                                          `📈 还需${goal.current_weight > goal.target_weight ? '减重' : '增重'} ${Math.abs(goal.current_weight - goal.target_weight).toFixed(1)} kg`}
+                                    </div>
+                                </div>
+                            </div>` : ''}
                             
                             <div class="summary-section">
                                 <h4>🏃 运动记录统计</h4>
-                `;
-                
-                if (totalRecords > 0) {
-                    let totalDisplay = `${(totalDistanceValue || 0).toFixed(1)} km`;
-                    if (hasTimeBasedActivities && !hasDistanceBasedActivities) {
-                        // Only time-based activities
-                        totalDisplay = `${(totalTimeValue || 0).toFixed(1)} 小时 (${(convertedTimeDistance || 0).toFixed(1)} km)`;
-                    } else if (hasTimeBasedActivities && hasDistanceBasedActivities) {
-                        // Mixed activities
-                        totalDisplay = `${(totalConvertedDistance || 0).toFixed(1)} km (${(totalTimeValue || 0).toFixed(1)} 小时)`;
-                    } else if (!hasTimeBasedActivities && hasDistanceBasedActivities) {
-                        // Only distance-based activities
-                        // totalDisplay is already set correctly above
-                    }
-                    
-                    summaryHTML += `
-                        <div class="exercise-stats-grid">
-                            <div class="stat-item">
-                                <div class="stat-label">运动次数</div>
-                                <div class="stat-value">${totalRecords || 0} 次</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-label">累计${hasTimeBasedActivities && !hasDistanceBasedActivities ? '时长' : '距离'}</div>
-                                <div class="stat-value">${totalDisplay}</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-label">运动类型</div>
-                                <div class="stat-value">${Object.keys(exerciseTypeStats).length || 0} 种</div>
-                            </div>
-                        </div>
-                        
-                        <div class="exercise-types-summary">
-                            <h5>各类型运动详情:</h5>
                     `;
                     
-                    // Display exercise type stats
-                    for (const [typeName, stats] of Object.entries(exerciseTypeStats)) {
-                        // Find the exercise type to determine the correct unit
-                        const exerciseType = exerciseTypes.find(type => type.name === typeName);
-                        const unit = exerciseType ? exerciseType.unit : 'km';
-                        
-                        // Calculate converted distance for display
-                        let convertedDistance = 0;
-                        let displayText = '';
-                        
-                        if (exerciseType) {
-                            if (exerciseType.unit === '小时') {
-                                // Apply conversion rules for time-based activities:
-                                // 1. Swimming: 1 hour = 10 km
-                                // 2. Other hour-based activities: 1 hour = 5 km
-                                if (exerciseType.id === 'swimming') {
-                                    convertedDistance = (stats.distance || 0) * 10;
-                                    displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
-                                } else {
-                                    convertedDistance = (stats.distance || 0) * 5;
-                                    displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
-                                }
-                            } else {
-                                // For distance-based activities
-                                if (exerciseType.id === 'cycling') {
-                                    convertedDistance = (stats.distance || 0) * 0.5;
-                                    displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
-                                } else {
-                                    convertedDistance = stats.distance || 0;
-                                    displayText = `${(stats.distance || 0).toFixed(1)} ${unit}`;
-                                }
-                            }
-                        } else {
-                            displayText = `${(stats.distance || 0).toFixed(1)} ${unit}`;
+                    if (totalRecords > 0) {
+                        let totalDisplay = `${(totalDistanceValue || 0).toFixed(1)} km`;
+                        if (hasTimeBasedActivities && !hasDistanceBasedActivities) {
+                            // Only time-based activities
+                            totalDisplay = `${(convertedTimeDistance || 0).toFixed(1)} km`;
+                        } else if (hasTimeBasedActivities && hasDistanceBasedActivities) {
+                            // Mixed activities
+                            totalDisplay = `${(totalConvertedDistance || 0).toFixed(1)} km`;
+                        } else if (!hasTimeBasedActivities && hasDistanceBasedActivities) {
+                            // Only distance-based activities
+                            // totalDisplay is already set correctly above
                         }
                         
                         summaryHTML += `
-                            <div class="exercise-type-stat">
-                                <span class="exercise-type-name">${typeName}</span>
-                                <span class="exercise-type-value">${stats.count || 0} 次，${displayText}</span>
-                            </div>
-                        `;
-                    }
-                    
-                    summaryHTML += `
+                            <div class="exercise-stats-grid">
+                                <div class="stat-item">
+                                    <div class="stat-label">运动次数</div>
+                                    <div class="stat-value">${totalRecords || 0} 次</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">累计距离</div>
+                                    <div class="stat-value">${totalDisplay}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">运动类型</div>
+                                    <div class="stat-value">${Object.keys(exerciseTypeStats).length || 0} 种</div>
                                 </div>
                             </div>
                             
+                            <div class="exercise-types-summary">
+                                <h5>各类型运动详情:</h5>
+                        `;
+                        
+                        // Display exercise type stats
+                        for (const [typeName, stats] of Object.entries(exerciseTypeStats)) {
+                            // Find the exercise type to determine the correct unit
+                            const exerciseType = exerciseTypes.find(type => type.name === typeName);
+                            const unit = exerciseType ? exerciseType.unit : 'km';
+                            
+                            // Calculate converted distance for display
+                            let convertedDistance = 0;
+                            let displayText = '';
+                            
+                            if (exerciseType) {
+                                if (exerciseType.unit === '小时') {
+                                    // Apply conversion rules for time-based activities:
+                                    // 1. Swimming: 1 hour = 10 km
+                                    // 2. Other hour-based activities: 1 hour = 5 km
+                                    if (exerciseType.id === 'swimming') {
+                                        convertedDistance = (stats.distance || 0) * 10;
+                                        displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
+                                    } else {
+                                        convertedDistance = (stats.distance || 0) * 5;
+                                        displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
+                                    }
+                                } else {
+                                    // For distance-based activities
+                                    if (exerciseType.id === 'cycling') {
+                                        convertedDistance = (stats.distance || 0) * 0.5;
+                                        displayText = `${(stats.distance || 0).toFixed(1)} ${unit} (${convertedDistance.toFixed(1)} km)`;
+                                    } else {
+                                        convertedDistance = stats.distance || 0;
+                                        displayText = `${(stats.distance || 0).toFixed(1)} ${unit}`;
+                                    }
+                                }
+                            } else {
+                                displayText = `${(stats.distance || 0).toFixed(1)} ${unit}`;
+                            }
+                            
+                            summaryHTML += `
+                                <div class="exercise-type-stat">
+                                    <span class="exercise-type-name">${typeName}</span>
+                                    <span class="exercise-type-value">${stats.count || 0} 次，${displayText}</span>
+                                </div>
+                            `;
+                        }
+                        
+                        summaryHTML += `
+                                    </div>
+                                </div>
+                                
+                                <div class="summary-section">
+                                    <h4>🤖 AI个性化建议</h4>
+                                    <div class="ai-recommendations">
+                        `;
+                        
+                        // Display AI recommendations
+                        if (Array.isArray(aiData.recommendations)) {
+                            aiData.recommendations.forEach(rec => {
+                                summaryHTML += `<p class="recommendation">${rec}</p>`;
+                            });
+                        } else {
+                            summaryHTML += `<p class="recommendation">暂无个性化建议</p>`;
+                        }
+                        
+                        summaryHTML += `
+                                    </div>
+                                </div>
+                            `;
+                    } else {
+                        summaryHTML += '<p>暂无运动记录</p>';
+                        
+                        summaryHTML += `
                             <div class="summary-section">
                                 <h4>🤖 AI个性化建议</h4>
                                 <div class="ai-recommendations">
                         `;
-                    
-                    // Display AI recommendations
-                    if (Array.isArray(aiRecommendations)) {
-                        aiRecommendations.forEach(rec => {
-                            summaryHTML += `<p class="recommendation">${rec}</p>`;
-                        });
-                    } else {
-                        summaryHTML += `<p class="recommendation">暂无个性化建议</p>`;
+                        
+                        if (Array.isArray(aiData.recommendations)) {
+                            aiData.recommendations.forEach(rec => {
+                                summaryHTML += `<p class="recommendation">${rec}</p>`;
+                            });
+                        }
+                        
+                        summaryHTML += `
+                                </div>
+                            </div>
+                        `;
                     }
                     
                     summaryHTML += `
                                 </div>
                             </div>
-                        `;
-                } else {
-                    summaryHTML += '<p>暂无运动记录</p>';
-                    
-                    // Even if no records, still show AI recommendations
-                    const emptyRecommendations = getAIRecommendations({
-                        totalRecords: 0,
-                        totalDistance: 0,
-                        exerciseTypeCount: 0
-                    });
-                    
-                    summaryHTML += `
-                        <div class="summary-section">
-                            <h4>🤖 AI个性化建议</h4>
-                            <div class="ai-recommendations">
-                    `;
-                    
-                    if (Array.isArray(emptyRecommendations)) {
-                        emptyRecommendations.forEach(rec => {
-                            summaryHTML += `<p class="recommendation">${rec}</p>`;
-                        });
-                    }
-                    
-                    summaryHTML += `
-                            </div>
                         </div>
                     `;
-                }
-                
-                summaryHTML += `
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                modal.innerHTML = summaryHTML;
-                document.body.appendChild(modal);
-            });
+                    
+                    modal.innerHTML = summaryHTML;
+                    document.body.appendChild(modal);
+                });
         })
         .catch(error => {
             console.error('Error loading data for summary:', error);
@@ -1818,6 +1969,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <div class="form-group">
                                         <label for="edit-current-weight">当前体重 (kg)：</label>
                                         <input type="number" id="edit-current-weight" step="0.1" min="0" ${goal.current_weight ? `value="${goal.current_weight}"` : ''}>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="edit-goal-visibility">可见性：</label>
+                                        <select id="edit-goal-visibility" required>
+                                            <option value="private" ${goal.visibility === 'private' ? 'selected' : ''}>私有</option>
+                                            <option value="public" ${goal.visibility === 'public' ? 'selected' : ''}>公有</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -2060,228 +2220,128 @@ window.exportSummaryToImage = function() {
     exportBtn.textContent = '正在生成...';
     exportBtn.disabled = true;
     
-    // 获取原始样式
-    const originalBodyOverflow = document.body.style.overflow;
-    const originalBodyHeight = document.body.style.height;
-    const originalHtmlOverflow = document.documentElement.style.overflow;
-    
-    // 临时修改样式以消除滚动条
-    document.body.style.overflow = 'hidden';
-    document.body.style.height = 'auto';
-    document.documentElement.style.overflow = 'hidden';
-    
-    // 如果有模态框滚动条，也临时隐藏
-    const modal = document.querySelector('.modal');
-    const originalModalOverflow = modal ? modal.style.overflow : '';
-    if (modal) {
-        modal.style.overflow = 'hidden';
-        // 确保模态框高度适应内容
-        modal.style.height = 'auto';
-    }
-    
-    // 强制重排
-    modalBody.offsetHeight;
-    
-    // 使用html2canvas生成图片 - 尝试多个CDN源
-    const cdnSources = [
-        'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
-        'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
-    ];
-    
-    // 动态加载脚本的函数
-    function loadScript(src) {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = () => resolve(window.html2canvas);
-            script.onerror = () => reject(new Error(`Failed to load script from ${src}`));
-            document.head.appendChild(script);
-        });
-    }
-    
-    // 尝试加载html2canvas
-    let html2canvasLoaded = false;
-    Promise.resolve()
-        .then(() => {
-            // 检查是否已经加载了html2canvas
-            if (window.html2canvas) {
-                return window.html2canvas;
-            }
-            
-            // 尝试依次加载不同的CDN源
-            return cdnSources.reduce((promise, src) => {
-                return promise.catch(() => {
-                    console.log(`Trying to load html2canvas from ${src}`);
-                    return loadScript(src);
-                });
-            }, Promise.reject(new Error('No CDN sources available')));
-        })
-        .then(html2canvas => {
-            html2canvasLoaded = true;
-            return html2canvas(modalBody, {
-                useCORS: true,
-                scale: 2, // 提高图片质量
-                backgroundColor: '#fff',
-                scrollX: 0,
-                scrollY: 0,
-                windowWidth: document.documentElement.scrollWidth,
-                windowHeight: document.documentElement.scrollHeight
-            });
-        })
-        .then(canvas => {
-            // 恢复原始样式
-            document.body.style.overflow = originalBodyOverflow;
-            document.body.style.height = originalBodyHeight;
-            document.documentElement.style.overflow = originalHtmlOverflow;
-            if (modal) {
-                modal.style.overflow = originalModalOverflow;
-            }
-            
-            // 创建下载链接
-            const link = document.createElement('a');
-            link.download = `运动目标总结_${new Date().toISOString().slice(0, 10)}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            
-            // 恢复按钮状态
-            exportBtn.textContent = originalBtnText;
-            exportBtn.disabled = false;
-            
-            showAlert('图片导出成功', 'success');
-        })
-        .catch(error => {
-            // 恢复原始样式
-            document.body.style.overflow = originalBodyOverflow;
-            document.body.style.height = originalBodyHeight;
-            document.documentElement.style.overflow = originalHtmlOverflow;
-            if (modal) {
-                modal.style.overflow = originalModalOverflow;
-            }
-            
-            // 恢复按钮状态
-            exportBtn.textContent = originalBtnText;
-            exportBtn.disabled = false;
-            
-            console.error('导出图片失败:', error);
-            
-            // 根据错误类型提供不同的提示
-            if (!html2canvasLoaded) {
-                showAlert('图片库加载失败，请检查网络连接后重试', 'error');
-            } else {
-                showAlert('导出图片失败: ' + error.message, 'error');
-            }
-        });
-};
-
-// 导出汇总为图片
-window.exportSummaryToImage = function() {
-    const modalBody = document.querySelector('.modal-body');
-    if (!modalBody) {
-        showAlert('无法找到汇总内容', 'error');
-        return;
-    }
-    
-    // 显示正在生成图片的提示
-    const exportBtn = document.getElementById('export-image-btn');
-    const originalBtnText = exportBtn.textContent;
-    exportBtn.textContent = '正在生成...';
-    exportBtn.disabled = true;
-    
     try {
         // 创建一个临时的DOM副本用于截图
         const clone = modalBody.cloneNode(true);
+        // 添加特殊类名以避免样式冲突
+        clone.className = 'export-image-clone';
         document.body.appendChild(clone);
         
         // 隐藏原始模态框
         modalBody.style.visibility = 'hidden';
         
         // 设置克隆元素样式
-        clone.style.position = 'absolute';
-        clone.style.top = '0';
-        clone.style.left = '0';
-        clone.style.width = '100%';
-        clone.style.height = 'auto';
-        clone.style.zIndex = '-1000';
-        clone.style.backgroundColor = '#fff';
-        clone.style.padding = '20px';
+        const cloneStyle = clone.style;
+        cloneStyle.position = 'absolute';
+        cloneStyle.top = '0';
+        cloneStyle.left = '0';
+        cloneStyle.width = '100%';
+        cloneStyle.maxWidth = '800px';
+        cloneStyle.height = 'auto';
+        cloneStyle.zIndex = '-1000';
+        cloneStyle.backgroundColor = '#fff';
+        cloneStyle.padding = '20px';
+        cloneStyle.margin = '20px auto';
+        cloneStyle.boxSizing = 'border-box';
         
         // 强制重排
         clone.offsetHeight;
         
-        // 使用html2canvas生成图片 - 尝试多个CDN源
-        const cdnSources = [
-            'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
-            'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js',
-            'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
-        ];
-        
-        // 动态加载脚本的函数
-        function loadScript(src) {
+        // 使用本地的html2canvas生成图片
+        function loadHtml2Canvas() {
             return new Promise((resolve, reject) => {
-                // 检查是否已经加载
-                if (typeof html2canvas !== 'undefined') {
-                    resolve(html2canvas);
+                // 检查是否已经加载了html2canvas
+                if (window.html2canvas) {
+                    resolve(window.html2canvas);
                     return;
                 }
                 
+                // 动态创建script标签加载本地的html2canvas
                 const script = document.createElement('script');
-                script.src = src;
+                script.src = '/tools/exercise/src/libs/html2canvas.min.js';
                 script.onload = () => {
-                    if (typeof html2canvas !== 'undefined') {
-                        resolve(html2canvas);
-                    } else {
-                        reject(new Error('html2canvas not available after loading'));
-                    }
+                    // 等待一点时间让库初始化
+                    setTimeout(() => {
+                        // 检查各种可能的导出方式
+                        if (typeof window.html2canvas === 'function') {
+                            resolve(window.html2canvas);
+                        } else if (window.html2canvas && typeof window.html2canvas.default === 'function') {
+                            window.html2canvas = window.html2canvas.default;
+                            resolve(window.html2canvas);
+                        } else if (window.html2canvas && typeof window.html2canvas.html2canvas === 'function') {
+                            resolve(window.html2canvas.html2canvas);
+                        } else if (typeof window.html2canvas === 'object') {
+                            // 查找对象中的函数
+                            for (let key in window.html2canvas) {
+                                if (typeof window.html2canvas[key] === 'function') {
+                                    window.html2canvas = window.html2canvas[key];
+                                    resolve(window.html2canvas);
+                                    return;
+                                }
+                            }
+                            reject(new Error('html2canvas加载完成但未找到可调用的函数'));
+                        } else {
+                            reject(new Error('html2canvas加载完成但未定义或不是函数'));
+                        }
+                    }, 100);
                 };
-                script.onerror = () => reject(new Error(`Failed to load script from ${src}`));
+                script.onerror = () => reject(new Error('html2canvas加载失败'));
                 document.head.appendChild(script);
             });
         }
         
-        // 尝试加载html2canvas
-        Promise.resolve()
-            .then(() => {
-                // 检查是否已经加载了html2canvas
-                if (typeof html2canvas !== 'undefined') {
-                    return html2canvas;
-                }
-                
-                // 尝试依次加载不同的CDN源
-                return cdnSources.reduce((promise, src) => {
-                    return promise.catch(() => {
-                        console.log(`Trying to load html2canvas from ${src}`);
-                        return loadScript(src);
-                    });
-                }, Promise.reject(new Error('No CDN sources available')));
-            })
+        // 加载并使用html2canvas
+        loadHtml2Canvas()
             .then(html2canvas => {
                 if (!html2canvas) {
-                    throw new Error('html2canvas is not available');
+                    throw new Error('html2canvas不可用');
                 }
                 
-                // 等待一点时间确保样式应用
-                return new Promise(resolve => setTimeout(() => resolve(html2canvas), 100));
+                // 等待确保样式应用
+                return new Promise(resolve => setTimeout(() => {
+                    resolve(html2canvas);
+                }, 200));
             })
             .then(html2canvas => {
-                return html2canvas(clone, {
+                // 配置html2canvas选项
+                const options = {
                     useCORS: true,
                     scale: 2,
                     backgroundColor: '#fff',
-                    logging: false
-                });
+                    logging: false,
+                    width: clone.scrollWidth,
+                    height: clone.scrollHeight,
+                    x: 0,
+                    y: 0
+                };
+                
+                return html2canvas(clone, options);
             })
             .then(canvas => {
                 // 删除克隆元素
-                document.body.removeChild(clone);
+                try {
+                    document.body.removeChild(clone);
+                } catch(e) {
+                    console.warn('删除克隆元素时出错:', e);
+                }
+                
                 // 恢复原始模态框
                 modalBody.style.visibility = 'visible';
+                
+                // 检查canvas是否有效
+                if (!canvas || !canvas.toDataURL) {
+                    throw new Error('生成的canvas无效');
+                }
                 
                 // 创建下载链接
                 const link = document.createElement('a');
                 link.download = `运动目标总结_${new Date().toISOString().slice(0, 10)}.png`;
                 link.href = canvas.toDataURL('image/png');
+                
+                // 触发下载
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
                 
                 // 恢复按钮状态
                 exportBtn.textContent = originalBtnText;
@@ -2293,7 +2353,11 @@ window.exportSummaryToImage = function() {
                 // 清理
                 try {
                     document.body.removeChild(clone);
-                } catch(e) {}
+                } catch(e) {
+                    console.warn('清理克隆元素时出错:', e);
+                }
+                
+                // 恢复原始模态框
                 modalBody.style.visibility = 'visible';
                 
                 // 恢复按钮状态
@@ -2303,7 +2367,7 @@ window.exportSummaryToImage = function() {
                 console.error('导出图片失败:', error);
                 
                 // 根据错误类型提供不同的提示
-                if (error.message.includes('Failed to load script') || error.message.includes('No CDN sources available')) {
+                if (error.message.includes('加载失败') || error.message.includes('Failed to fetch')) {
                     showAlert('图片库加载失败，请检查网络连接后重试', 'error');
                 } else {
                     showAlert('导出图片失败: ' + error.message, 'error');

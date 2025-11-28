@@ -1,28 +1,25 @@
 {
   "name": "household-item-usage-management",
   "version": "1.0.0",
-  "description": "A system to manage and track household item usage rates",
+  "description": "个人物品使用率管理系统",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
+    "axios": "^1.6.0",
     "bcrypt": "^5.1.0",
     "express": "^4.18.2",
-    "express-rate-limit": "^8.2.1",
-    "jsonwebtoken": "^9.0.2",
-    "sqlite3": "^5.1.7"
+    "express-rate-limit": "^6.7.0",
+    "sqlite3": "^5.1.7",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
-  },
-  "keywords": [
-    "household",
-    "item",
-    "usage",
-    "management"
-  ],
-  "author": "Developer",
-  "license": "MIT"
+  }
 }

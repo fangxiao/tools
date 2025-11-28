@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户登录</title>
+    <title>用户注册</title>
     <link rel="stylesheet" href="/styles.css">
     <style>
         body {
@@ -17,7 +17,7 @@
             min-height: 100vh;
         }
         
-        .login-container {
+        .register-container {
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -26,12 +26,12 @@
             max-width: 400px;
         }
         
-        .login-header {
+        .register-header {
             text-align: center;
             margin-bottom: 30px;
         }
         
-        .login-header h1 {
+        .register-header h1 {
             color: #333;
             margin-bottom: 10px;
         }
@@ -55,8 +55,15 @@
             font-size: 16px;
         }
         
-        .btn-login {
-            background-color: #007bff;
+        .form-group small {
+            display: block;
+            color: #6c757d;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        
+        .btn-register {
+            background-color: #28a745;
             color: white;
             border: none;
             padding: 12px;
@@ -68,21 +75,21 @@
             transition: background-color 0.3s;
         }
         
-        .btn-login:hover {
-            background-color: #0056b3;
+        .btn-register:hover {
+            background-color: #218838;
         }
         
-        .login-footer {
+        .register-footer {
             text-align: center;
             margin-top: 20px;
         }
         
-        .login-footer a {
+        .register-footer a {
             color: #007bff;
             text-decoration: none;
         }
         
-        .login-footer a:hover {
+        .register-footer a:hover {
             text-decoration: underline;
         }
         
@@ -96,10 +103,10 @@
             display: none;
         }
         
-        .info-message {
-            color: #0c5460;
-            background-color: #d1ecf1;
-            border: 1px solid #bee5eb;
+        .success-message {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 20px;
@@ -108,55 +115,58 @@
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <h1>用户登录</h1>
-            <p>请输入您的用户名和密码</p>
+    <div class="register-container">
+        <div class="register-header">
+            <h1>用户注册</h1>
+            <p>创建您的账户</p>
         </div>
         
         <div id="error-message" class="error-message"></div>
-        <div id="info-message" class="info-message">默认账户: admin/123456</div>
+        <div id="success-message" class="success-message"></div>
         
-        <form id="login-form">
+        <form id="register-form">
             <div class="form-group">
                 <label for="username">用户名</label>
                 <input type="text" id="username" name="username" required>
+                <small>用户名至少需要3个字符</small>
             </div>
             
             <div class="form-group">
                 <label for="password">密码</label>
                 <input type="password" id="password" name="password" required>
+                <small>密码至少需要6个字符</small>
             </div>
             
-            <button type="submit" class="btn-login">登录</button>
+            <button type="submit" class="btn-register">注册</button>
         </form>
         
-        <div class="login-footer">
-            <p><a href="/reset-password.html">忘记密码？</a></p>
-            <p>还没有账户？<a href="/register.html">立即注册</a></p>
+        <div class="register-footer">
+            <p>已有账户？<a href="/login.html">立即登录</a></p>
         </div>
     </div>
 
-    <script src="/auth.js"></script>
     <script>
-        // 显示提示信息
-        document.getElementById('info-message').style.display = 'block';
-        
-        document.getElementById('login-form').addEventListener('submit', function(e) {
+        document.getElementById('register-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const errorMessage = document.getElementById('error-message');
+            const successMessage = document.getElementById('success-message');
             
             // 简单的前端验证
-            if (!username || !password) {
-                showError('请填写所有字段');
+            if (username.length < 3) {
+                showError('用户名至少需要3个字符');
                 return;
             }
             
-            // 发送登录请求
-            fetch('/api/login', {
+            if (password.length < 6) {
+                showError('密码至少需要6个字符');
+                return;
+            }
+            
+            // 发送注册请求
+            fetch('/api/register', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -167,40 +177,42 @@
                 // 检查响应状态
                 if (!response.ok) {
                     return response.json().then(data => {
-                        throw new Error(data.error || '登录失败');
+                        throw new Error(data.error || '注册失败');
                     });
                 }
                 return response.json();
             })
             .then(data => {
                 if (data.id && data.username) {
-                    // 保存用户信息到localStorage
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('currentUser', JSON.stringify({
-                        id: data.id,
-                        username: data.username
-                    }));
-                    // 重定向到主页
-                    window.location.href = '/';
+                    showSuccess('注册成功！3秒后将跳转到登录页面...');
+                    // 3秒后跳转到登录页面
+                    setTimeout(() => {
+                        window.location.href = '/login.html';
+                    }, 3000);
                 } else {
-                    showError(data.error || '登录响应无效');
+                    showError(data.error || '注册响应无效');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showError(error.message || '登录过程中发生错误');
+                showError(error.message || '注册过程中发生错误');
             });
         });
         
         function showError(message) {
             const errorMessage = document.getElementById('error-message');
+            const successMessage = document.getElementById('success-message');
             errorMessage.textContent = message;
             errorMessage.style.display = 'block';
-            
-            // 3秒后自动隐藏错误消息
-            setTimeout(() => {
-                errorMessage.style.display = 'none';
-            }, 3000);
+            successMessage.style.display = 'none';
+        }
+        
+        function showSuccess(message) {
+            const errorMessage = document.getElementById('error-message');
+            const successMessage = document.getElementById('success-message');
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
         }
     </script>
 </body>

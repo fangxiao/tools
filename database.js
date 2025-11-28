@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const bcrypt = require('bcrypt');
 
 // 创建缓存对象
 const cache = new Map();
@@ -204,28 +205,12 @@ function initializeDatabase() {
       }
     });
     
-    // 添加初始体重、目标体重和当前体重字段到现有运动目标表
-    db.run(`ALTER TABLE exercise_goals ADD COLUMN initial_weight REAL`, (err) => {
+    // 为运动目标表添加visibility字段（如果不存在）
+    db.run(`ALTER TABLE exercise_goals ADD COLUMN visibility TEXT DEFAULT 'private'`, (err) => {
       if (err && !err.message.includes('duplicate column name')) {
         console.error('更新运动目标表结构失败:', err.message);
       } else if (!err) {
-        console.log('运动目标表结构已更新，添加了initial_weight字段');
-      }
-    });
-    
-    db.run(`ALTER TABLE exercise_goals ADD COLUMN target_weight REAL`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('更新运动目标表结构失败:', err.message);
-      } else if (!err) {
-        console.log('运动目标表结构已更新，添加了target_weight字段');
-      }
-    });
-    
-    db.run(`ALTER TABLE exercise_goals ADD COLUMN current_weight REAL`, (err) => {
-      if (err && !err.message.includes('duplicate column name')) {
-        console.error('更新运动目标表结构失败:', err.message);
-      } else if (!err) {
-        console.log('运动目标表结构已更新，添加了current_weight字段');
+        console.log('运动目标表结构已更新，添加了visibility字段，默认值为private');
       }
     });
     
@@ -267,6 +252,30 @@ function initializeDatabase() {
         console.error('创建访问城市表失败:', err.message);
       } else {
         console.log('访问城市表已创建或已存在');
+      }
+    });
+    
+    // 检查是否已存在用户，如果不存在则创建默认用户
+    db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
+      if (!err && row.count === 0) {
+        // 创建默认用户 admin/123456
+        bcrypt.hash('123456', 10, (err, hashedPassword) => {
+          if (!err) {
+            const createdAt = new Date().toISOString();
+            db.run('INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)', 
+              ['admin', hashedPassword, createdAt], 
+              (err) => {
+                if (err) {
+                  console.error('创建默认用户失败:', err.message);
+                } else {
+                  console.log('已创建默认用户: admin/123456');
+                }
+              }
+            );
+          } else {
+            console.error('加密默认用户密码失败:', err.message);
+          }
+        });
       }
     });
   });
@@ -595,20 +604,25 @@ function createUsageLog(log, callback) {
 
 // 运动目标相关操作
 function getExerciseGoalsByUser(userId, callback) {
-  const sql = 'SELECT * FROM exercise_goals WHERE user_id = ? ORDER BY created_at DESC';
+  const sql = `
+    SELECT * FROM exercise_goals 
+    WHERE user_id = ? OR visibility = 'public'
+    ORDER BY created_at DESC`;
   db.all(sql, [userId], callback);
 }
 
 function getExerciseGoalById(id, userId, callback) {
-  const sql = 'SELECT * FROM exercise_goals WHERE id = ? AND user_id = ?';
+  const sql = `
+    SELECT * FROM exercise_goals 
+    WHERE id = ? AND (user_id = ? OR visibility = 'public')`;
   db.get(sql, [id, userId], callback);
 }
 
 function createExerciseGoal(userId, goalData, callback) {
   const createdAt = new Date().toISOString();
   const sql = `INSERT INTO exercise_goals 
-    (user_id, title, target, period, start_date, end_date, initial_weight, target_weight, current_weight, created_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    (user_id, title, target, period, start_date, end_date, initial_weight, target_weight, current_weight, visibility, created_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   const params = [
     userId, 
     goalData.title, 
@@ -619,6 +633,7 @@ function createExerciseGoal(userId, goalData, callback) {
     goalData.initialWeight,
     goalData.targetWeight,
     goalData.currentWeight,
+    goalData.visibility || 'private', // 默认为私有
     createdAt
   ];
   db.run(sql, params, callback);
@@ -627,7 +642,7 @@ function createExerciseGoal(userId, goalData, callback) {
 function updateExerciseGoal(id, userId, goalData, callback) {
   const sql = `UPDATE exercise_goals SET 
     title = ?, target = ?, start_date = ?, end_date = ?,
-    target_weight = ?, current_weight = ?
+    target_weight = ?, current_weight = ?, visibility = ?
     WHERE id = ? AND user_id = ?`;
   const params = [
     goalData.title, 
@@ -636,6 +651,7 @@ function updateExerciseGoal(id, userId, goalData, callback) {
     goalData.endDate,
     goalData.targetWeight,
     goalData.currentWeight,
+    goalData.visibility || 'private', // 默认为私有
     id, 
     userId
   ];
@@ -661,14 +677,15 @@ function updateCurrentWeight(goalId, userId, currentWeight, callback) {
 function getExerciseRecordsByUser(userId, callback) {
   const sql = `SELECT er.*, eg.title as goal_title FROM exercise_records er 
                JOIN exercise_goals eg ON er.goal_id = eg.id 
-               WHERE er.user_id = ? ORDER BY er.record_date DESC, er.created_at DESC`;
+               WHERE er.user_id = ? OR eg.visibility = 'public'
+               ORDER BY er.record_date DESC, er.created_at DESC`;
   db.all(sql, [userId], callback);
 }
 
 function getExerciseRecordsByGoal(goalId, userId, callback) {
   const sql = `SELECT er.*, eg.title as goal_title FROM exercise_records er 
                JOIN exercise_goals eg ON er.goal_id = eg.id 
-               WHERE er.goal_id = ? AND er.user_id = ? 
+               WHERE er.goal_id = ? AND (er.user_id = ? OR eg.visibility = 'public')
                ORDER BY er.record_date DESC, er.created_at DESC`;
   db.all(sql, [goalId, userId], callback);
 }
