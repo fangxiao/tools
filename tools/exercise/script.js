@@ -221,9 +221,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Custom alert function
     function showAlert(message, type = 'info') {
+        // Check if document.body exists
+        if (!document.body) {
+            console.warn('Document body not available for alert:', message);
+            return;
+        }
+        
         // Remove any existing alerts
         const existingAlert = document.querySelector('.custom-alert');
-        if (existingAlert) {
+        if (existingAlert && document.body.contains(existingAlert)) {
             document.body.removeChild(existingAlert);
         }
         
@@ -237,16 +243,27 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         
-        document.body.appendChild(alertElement);
+        // Check if document.body still exists before appending
+        if (document.body) {
+            document.body.appendChild(alertElement);
+        } else {
+            console.warn('Document body not available for alert:', message);
+            return;
+        }
         
         // Add close event
-        alertElement.querySelector('.custom-alert-close').addEventListener('click', function() {
-            document.body.removeChild(alertElement);
-        });
+        const closeButton = alertElement.querySelector('.custom-alert-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', function() {
+                if (document.body && document.body.contains(alertElement)) {
+                    document.body.removeChild(alertElement);
+                }
+            });
+        }
         
         // Auto close after 3 seconds
         setTimeout(() => {
-            if (document.body.contains(alertElement)) {
+            if (document.body && document.body.contains(alertElement)) {
                 document.body.removeChild(alertElement);
             }
         }, 3000);
@@ -916,22 +933,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // 导出汇总为图片
-    window.exportSummaryToImage = function() {
-        // 先确保html2canvas已加载
-        loadHtml2Canvas()
-            .then(html2canvas => {
-                return html2canvas(document.querySelector('.summary-container'));
-            })
-            .then(canvas => {
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/png');
-                link.download = '运动汇总.png';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            });
-    };
 
     // 导出记录为CSV
     window.exportRecordsToCSV = function() {
@@ -974,8 +975,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 初始化页面
     window.onload = function() {
-        loadGoals();
-        loadRecords();
+        displayGoals();
     };
 
 
@@ -1689,9 +1689,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Get AI-powered recommendations from server
-            return fetch(`/api/exercise-goals/${goalId}/recommendations?userId=${currentUser.id}`)
-                .then(response => response.json())
-                .then(aiData => {
+            return getAIRecommendations(userData)
+                .then(recommendations => {
+                    // Wrap recommendations in the expected format
+                    const aiData = {
+                        success: true,
+                        recommendations: recommendations
+                    };
+                    
                     // Create modal
                     const modal = document.createElement('div');
                     modal.className = 'modal-overlay';
@@ -1700,7 +1705,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="modal">
                             <div class="modal-header">
                                 <h3>${goal.title} - 汇总</h3>
-                                ${isExerciseGoalCompleted ? '<div class="stamp stamp-goal-completed">运动完成</div>' : ''}
                                 ${isWeightGoalCompleted ? '<div class="stamp stamp-weight-goal-completed">减重完成</div>' : ''}
                                 <button class="modal-close" onclick="closeModal()">&times;</button>
                             </div>
@@ -1708,7 +1712,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <div class="summary-section">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                                         <h4 style="margin: 0;">🎯 目标进度</h4>
-                                        <button id="export-image-btn" class="btn-use" style="padding: 6px 12px; font-size: 13px;">导出图片</button>
                                     </div>
                                     <div class="summary-stats">
                                         <div class="stat-item">
@@ -2120,24 +2123,33 @@ function logout() {
 
 // Function to get AI-powered recommendations
 function getAIRecommendations(userData) {
-    // In a real implementation, this would call an actual AI service
-    // For now, we'll simulate an AI response with more personalized suggestions
-    
-    // This is a placeholder for actual AI integration
-    // You would replace this with a real API call to your AI service
-    /*
-    return fetch('/api/ai-recommendations', {
+    // First try to get recommendations from the server (Spark service)
+    return fetch('/api/spark/recommendations', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(userData)
     })
     .then(response => response.json())
-    .then(data => data.recommendations);
-    */
-    
-    // Simulated AI recommendations based on user data
+    .then(data => {
+        if (data.success) {
+            return data.recommendations;
+        } else {
+            // Fallback to simulated recommendations if service fails
+            return getSimulatedRecommendations(userData);
+        }
+    })
+    .catch(error => {
+        console.error('获取讯飞星火AI建议失败:', error);
+        // Final fallback to simulated recommendations
+        return getSimulatedRecommendations(userData);
+    });
+}
+
+// Simulated AI recommendations based on user data
+function getSimulatedRecommendations(userData) {
     const recommendations = [];
     
     if (userData.totalRecords === 0) {
@@ -2208,187 +2220,378 @@ function getAIRecommendations(userData) {
 
 // 导出汇总为图片
 window.exportSummaryToImage = function() {
-    const modalBody = document.querySelector('.modal-body');
-    if (!modalBody) {
-        showAlert('无法找到汇总内容', 'error');
-        return;
-    }
+    const exportBtn = document.getElementById("export-image-btn");
+    if (!exportBtn) return;
     
-    // 显示正在生成图片的提示
-    const exportBtn = document.getElementById('export-image-btn');
-    const originalBtnText = exportBtn.textContent;
-    exportBtn.textContent = '正在生成...';
+    // 保存原始按钮状态
+    const originalText = exportBtn.textContent;
+    exportBtn.textContent = "正在导出...";
     exportBtn.disabled = true;
     
-    try {
-        // 创建一个临时的DOM副本用于截图
-        const clone = modalBody.cloneNode(true);
-        // 添加特殊类名以避免样式冲突
-        clone.className = 'export-image-clone';
-        document.body.appendChild(clone);
-        
-        // 隐藏原始模态框
-        modalBody.style.visibility = 'hidden';
-        
-        // 设置克隆元素样式
-        const cloneStyle = clone.style;
-        cloneStyle.position = 'absolute';
-        cloneStyle.top = '0';
-        cloneStyle.left = '0';
-        cloneStyle.width = '100%';
-        cloneStyle.maxWidth = '800px';
-        cloneStyle.height = 'auto';
-        cloneStyle.zIndex = '-1000';
-        cloneStyle.backgroundColor = '#fff';
-        cloneStyle.padding = '20px';
-        cloneStyle.margin = '20px auto';
-        cloneStyle.boxSizing = 'border-box';
-        
-        // 强制重排
-        clone.offsetHeight;
-        
-        // 使用本地的html2canvas生成图片
-        function loadHtml2Canvas() {
+    // 等待所有内容加载完成
+    waitForAllContent()
+        .then(() => {
+            // 检查html2canvas是否已加载
+            if (typeof html2canvas === 'undefined') {
+                throw new Error('html2canvas库未加载');
+            }
+            
+            // 获取模态框元素
+            const modalOverlay = document.querySelector(".modal-overlay");
+            const modalBody = document.querySelector(".modal-body");
+            
+            if (!modalOverlay || !modalBody) {
+                throw new Error("无法找到模态框元素");
+            }
+            
+            // 创建一个临时的完整内容容器
+            const tempContainer = document.createElement('div');
+            tempContainer.style.position = 'absolute';
+            tempContainer.style.left = '-9999px';
+            tempContainer.style.width = '800px'; // 固定宽度
+            tempContainer.style.backgroundColor = '#fff';
+            tempContainer.style.padding = '20px';
+            tempContainer.style.boxSizing = 'border-box';
+            tempContainer.style.zIndex = '-1000';
+            tempContainer.style.fontFamily = 'Arial, sans-serif';
+            
+            // 克隆模态框内容
+            const clonedContent = modalBody.cloneNode(true);
+            clonedContent.style.maxHeight = 'none';
+            clonedContent.style.overflow = 'visible';
+            clonedContent.style.height = 'auto';
+            
+            // 移除不需要的元素（如关闭按钮等）
+            const closeButtons = clonedContent.querySelectorAll('.close-modal, .modal-close, .btn-close');
+            closeButtons.forEach(btn => {
+                try {
+                    if (btn.parentNode) {
+                        btn.parentNode.removeChild(btn);
+                    }
+                } catch (e) {
+                    console.warn("移除关闭按钮时出错:", e);
+                }
+            });
+            
+            // 确保所有子元素可见并强制显示
+            const allElements = clonedContent.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el) {
+                    // 移除隐藏类和样式
+                    el.classList.remove('hidden', 'invisible');
+                    el.style.visibility = 'visible';
+                    el.style.display = el.style.display === 'none' ? 'block' : el.style.display;
+                    
+                    // 确保加载提示被隐藏
+                    if (el.classList.contains('loading') || 
+                        (el.textContent && el.textContent.includes('加载中'))) {
+                        el.style.display = 'none';
+                    }
+                }
+            });
+            
+            // 特殊处理加载元素
+            const loadingElements = clonedContent.querySelectorAll('.loading, .ai-loading');
+            loadingElements.forEach(el => {
+                if (el) {
+                    el.style.display = 'none';
+                }
+            });
+            
+            // 安全地添加到临时容器
+            try {
+                if (tempContainer) {
+                    tempContainer.appendChild(clonedContent);
+                }
+            } catch (e) {
+                console.error("添加克隆内容到临时容器时出错:", e);
+                throw new Error("创建导出内容失败");
+            }
+            
+            // 安全地添加到body
+            try {
+                if (document.body && tempContainer) {
+                    document.body.appendChild(tempContainer);
+                } else {
+                    throw new Error("无法访问document.body或临时容器");
+                }
+            } catch (e) {
+                console.error("添加临时容器到document.body时出错:", e);
+                // 清理已创建的元素
+                if (tempContainer && tempContainer.parentNode) {
+                    tempContainer.parentNode.removeChild(tempContainer);
+                }
+                throw new Error("无法将导出内容添加到页面");
+            }
+            
+            // 等待DOM更新
+            return new Promise(resolve => {
+                // 增加延迟确保所有样式和内容都已正确应用
+                setTimeout(() => {
+                    resolve({
+                        tempContainer,
+                        originalText,
+                        exportBtn
+                    });
+                }, 300);
+            });
+        })
+        .then(({tempContainer, originalText, exportBtn}) => {
+            // 执行截图
+            return html2canvas(tempContainer, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#fff',
+                logging: false,
+                width: tempContainer.scrollWidth,
+                height: tempContainer.scrollHeight
+            }).then(canvas => {
+                // 清理临时容器
+                try {
+                    if (tempContainer && tempContainer.parentNode) {
+                        tempContainer.parentNode.removeChild(tempContainer);
+                    }
+                } catch (e) {
+                    console.warn("清理临时容器时出错:", e);
+                }
+                return { canvas, originalText, exportBtn };
+            }).catch(error => {
+                // 清理临时容器
+                try {
+                    if (tempContainer && tempContainer.parentNode) {
+                        tempContainer.parentNode.removeChild(tempContainer);
+                    }
+                } catch (e) {
+                    console.warn("清理临时容器时出错:", e);
+                }
+                throw error;
+            });
+        })
+        .then(({canvas, originalText, exportBtn}) => {
+            // 转换为blob并下载
             return new Promise((resolve, reject) => {
-                // 检查是否已经加载了html2canvas
-                if (window.html2canvas) {
-                    resolve(window.html2canvas);
+                canvas.toBlob(blob => {
+                    if (!blob) {
+                        reject(new Error("图片生成失败"));
+                        return;
+                    }
+                    
+                    // 创建文件名
+                    const goalTitleElement = document.querySelector(".modal-header h3");
+                    const goalTitle = goalTitleElement && goalTitleElement.textContent ? 
+                        goalTitleElement.textContent.replace(" - 汇总", "") : "运动目标";
+                    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+                    const filename = `${goalTitle}_运动汇总_${dateStr}.png`;
+                    
+                    // 下载文件
+                    downloadBlob(blob, filename);
+                    resolve({originalText, exportBtn});
+                }, 'image/png', 0.9); // 设置质量参数
+            });
+        })
+        .then(({originalText, exportBtn}) => {
+            showAlert("图片导出成功！", "success");
+        })
+        .catch(error => {
+            console.error("导出图片失败:", error);
+            showAlert("导出图片失败: " + (error.message || "未知错误"), "error");
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            try {
+                if (exportBtn) {
+                    exportBtn.textContent = originalText;
+                    exportBtn.disabled = false;
+                }
+            } catch (e) {
+                console.warn("恢复按钮状态时出错:", e);
+            }
+        });
+};
+
+// 等待所有内容加载完成
+function waitForAllContent() {
+    return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const maxAttempts = 50; // 增加到最多等待25秒
+        
+        function checkContent() {
+            attempts++;
+            
+            try {
+                // 检查是否还有"加载中"元素
+                let hasLoading = false;
+                try {
+                    const loadingElements = document.querySelectorAll(".loading, .ai-loading");
+                    
+                    for (let i = 0; i < loadingElements.length; i++) {
+                        const el = loadingElements[i];
+                        // 检查元素是否存在且包含加载中文本
+                        if (el && el.textContent) {
+                            const text = el.textContent.trim();
+                            if (text.includes("加载中") || 
+                                text.includes("正在生成") ||
+                                text.includes("分析中") ||
+                                text.includes("生成中") ||
+                                text.includes("请稍候") ||
+                                text.includes("处理中")) {
+                                hasLoading = true;
+                                break;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("检查加载状态时出错:", e);
+                }
+                
+                // 检查AI建议区域是否已填充内容
+                let aiContentReady = false;
+                try {
+                    const aiRecommendations = document.querySelector(".ai-recommendations");
+                    if (aiRecommendations) {
+                        // 检查是否有实际内容（不仅仅是空的容器）
+                        const hasActualContent = aiRecommendations.children.length > 0 || 
+                                                 (aiRecommendations.textContent && 
+                                                  aiRecommendations.textContent.trim().length > 10); // 至少10个字符才算有内容
+                        aiContentReady = hasActualContent;
+                    }
+                } catch (e) {
+                    console.warn("检查AI内容时出错:", e);
+                }
+                
+                // 检查运动记录统计是否已填充
+                let statsReady = false;
+                try {
+                    const exerciseStats = document.querySelector(".summary-stats");
+                    if (exerciseStats) {
+                        // 检查是否有实际的统计内容
+                        statsReady = exerciseStats.children.length > 0;
+                    }
+                } catch (e) {
+                    console.warn("检查运动统计数据时出错:", e);
+                }
+                
+                // 检查图表是否已渲染
+                let chartsReady = false;
+                try {
+                    const chartContainers = document.querySelectorAll(".chart-container");
+                    if (chartContainers.length > 0) {
+                        // 检查图表容器中是否有canvas或其他内容
+                        for (let i = 0; i < chartContainers.length; i++) {
+                            if (chartContainers[i].children.length > 0) {
+                                chartsReady = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        // 如果没有图表容器，就不把图表作为必要条件
+                        chartsReady = true;
+                    }
+                } catch (e) {
+                    console.warn("检查图表时出错:", e);
+                    chartsReady = true; // 出错时假设图表已就绪
+                }
+                
+                // 判断是否准备好导出
+                // 条件1: 没有加载中的元素
+                // 条件2: AI内容已准备好（如果有AI区域的话）
+                // 条件3: 统计数据已准备好
+                // 条件4: 图表已准备好
+                const isReady = !hasLoading && statsReady && chartsReady && (aiContentReady || !document.querySelector(".ai-recommendations"));
+                
+                // 如果准备好了或者尝试次数超过最大次数，则继续
+                if (isReady || attempts >= maxAttempts) {
+                    if (attempts >= maxAttempts) {
+                        console.warn("内容加载超时，将继续导出当前内容");
+                    }
+                    resolve();
                     return;
                 }
                 
-                // 动态创建script标签加载本地的html2canvas
-                const script = document.createElement('script');
-                script.src = '/tools/exercise/src/libs/html2canvas.min.js';
-                script.onload = () => {
-                    // 等待一点时间让库初始化
-                    setTimeout(() => {
-                        // 检查各种可能的导出方式
-                        if (typeof window.html2canvas === 'function') {
-                            resolve(window.html2canvas);
-                        } else if (window.html2canvas && typeof window.html2canvas.default === 'function') {
-                            window.html2canvas = window.html2canvas.default;
-                            resolve(window.html2canvas);
-                        } else if (window.html2canvas && typeof window.html2canvas.html2canvas === 'function') {
-                            resolve(window.html2canvas.html2canvas);
-                        } else if (typeof window.html2canvas === 'object') {
-                            // 查找对象中的函数
-                            for (let key in window.html2canvas) {
-                                if (typeof window.html2canvas[key] === 'function') {
-                                    window.html2canvas = window.html2canvas[key];
-                                    resolve(window.html2canvas);
-                                    return;
-                                }
-                            }
-                            reject(new Error('html2canvas加载完成但未找到可调用的函数'));
-                        } else {
-                            reject(new Error('html2canvas加载完成但未定义或不是函数'));
-                        }
-                    }, 100);
-                };
-                script.onerror = () => reject(new Error('html2canvas加载失败'));
-                document.head.appendChild(script);
-            });
+                // 继续检查
+                setTimeout(checkContent, 500);
+            } catch (error) {
+                console.error("检查内容加载状态时出错:", error);
+                // 出错时仍然继续，避免阻塞导出功能
+                resolve();
+            }
         }
         
-        // 加载并使用html2canvas
-        loadHtml2Canvas()
-            .then(html2canvas => {
-                if (!html2canvas) {
-                    throw new Error('html2canvas不可用');
-                }
-                
-                // 等待确保样式应用
-                return new Promise(resolve => setTimeout(() => {
-                    resolve(html2canvas);
-                }, 200));
-            })
-            .then(html2canvas => {
-                // 配置html2canvas选项
-                const options = {
-                    useCORS: true,
-                    scale: 2,
-                    backgroundColor: '#fff',
-                    logging: false,
-                    width: clone.scrollWidth,
-                    height: clone.scrollHeight,
-                    x: 0,
-                    y: 0
-                };
-                
-                return html2canvas(clone, options);
-            })
-            .then(canvas => {
-                // 删除克隆元素
-                try {
-                    document.body.removeChild(clone);
-                } catch(e) {
-                    console.warn('删除克隆元素时出错:', e);
-                }
-                
-                // 恢复原始模态框
-                modalBody.style.visibility = 'visible';
-                
-                // 检查canvas是否有效
-                if (!canvas || !canvas.toDataURL) {
-                    throw new Error('生成的canvas无效');
-                }
-                
-                // 创建下载链接
-                const link = document.createElement('a');
-                link.download = `运动目标总结_${new Date().toISOString().slice(0, 10)}.png`;
-                link.href = canvas.toDataURL('image/png');
-                
-                // 触发下载
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                // 恢复按钮状态
-                exportBtn.textContent = originalBtnText;
-                exportBtn.disabled = false;
-                
-                showAlert('图片导出成功', 'success');
-            })
-            .catch(error => {
-                // 清理
-                try {
-                    document.body.removeChild(clone);
-                } catch(e) {
-                    console.warn('清理克隆元素时出错:', e);
-                }
-                
-                // 恢复原始模态框
-                modalBody.style.visibility = 'visible';
-                
-                // 恢复按钮状态
-                exportBtn.textContent = originalBtnText;
-                exportBtn.disabled = false;
-                
-                console.error('导出图片失败:', error);
-                
-                // 根据错误类型提供不同的提示
-                if (error.message.includes('加载失败') || error.message.includes('Failed to fetch')) {
-                    showAlert('图片库加载失败，请检查网络连接后重试', 'error');
-                } else {
-                    showAlert('导出图片失败: ' + error.message, 'error');
-                }
-            });
-    } catch (error) {
-        // 恢复按钮状态
-        exportBtn.textContent = originalBtnText;
-        exportBtn.disabled = false;
-        
-        console.error('导出图片失败:', error);
-        showAlert('导出图片失败: ' + error.message, 'error');
-    }
-};
-
-// 在DOM加载完成后为导出按钮添加事件监听器
-document.addEventListener('DOMContentLoaded', function() {
-    // 使用事件委托处理导出按钮点击事件
-    document.addEventListener('click', function(event) {
-        if (event.target && event.target.id === 'export-image-btn') {
-            exportSummaryToImage();
+        // 开始检查
+        try {
+            checkContent();
+        } catch (e) {
+            console.error("启动内容检查时出错:", e);
+            resolve(); // 出错时直接继续
         }
     });
+}
+
+// 下载Blob的辅助函数
+function downloadBlob(blob, filename) {
+    try {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        
+        // 添加到页面并点击（加强元素存在性检查）
+        if (document.body) {
+            try {
+                document.body.appendChild(link);
+                // 兼容性处理
+                if (link.click) {
+                    link.click();
+                } else if (document.createEvent) {
+                    const event = document.createEvent('MouseEvents');
+                    event.initEvent('click', true, true);
+                    link.dispatchEvent(event);
+                }
+                
+                // 延迟清理以确保下载触发
+                setTimeout(() => {
+                    try {
+                        if (link.parentNode) {
+                            link.parentNode.removeChild(link);
+                        }
+                        URL.revokeObjectURL(url);
+                    } catch (e) {
+                        console.warn("清理下载链接时出错:", e);
+                    }
+                }, 100);
+            } catch (e) {
+                console.error("添加或点击下载链接时出错:", e);
+                // 清理可能已创建但未正确添加的元素
+                try {
+                    if (link && link.parentNode) {
+                        link.parentNode.removeChild(link);
+                    }
+                    URL.revokeObjectURL(url);
+                } catch (cleanupError) {
+                    console.warn("清理下载链接时出错:", cleanupError);
+                }
+                throw e;
+            }
+        } else {
+            // fallback方案
+            try {
+                window.open(url, '_blank');
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                console.error("Fallback下载方案失败:", e);
+                // 最后的fallback
+                showAlert("无法自动下载文件，请手动保存图片", "warning");
+            }
+        }
+    } catch (error) {
+        console.error("下载文件时出错:", error);
+        showAlert("下载文件时出错，请手动保存图片: " + (error.message || ""), "error");
+    }
+}
+
+// 为导出按钮添加事件监听器
+document.addEventListener('click', function(event) {
+    // 导出图片功能已移除，保留空的事件监听器以避免错误
 });
+

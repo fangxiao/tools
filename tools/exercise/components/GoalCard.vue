@@ -158,8 +158,8 @@ export default {
 /* 运动完成印章样式 */
 .stamp-goal-completed {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 60px; /* 调整位置避免遮挡模态框关闭按钮 */
+  right: 20px;
   width: 60px;
   height: 60px;
   background-color: rgba(46, 204, 113, 0.85);
@@ -178,7 +178,7 @@ export default {
 }
 
 .stamp-goal-completed.single-stamp {
-  right: 10px;
+  right: 20px;
 }
 
 .stamp-goal-completed::before {
@@ -195,8 +195,8 @@ export default {
 /* 减重完成印章样式 */
 .stamp-weight-goal-completed {
   position: absolute;
-  top: 10px;
-  right: 80px; /* 调整位置避免与运动完成印章重叠 */
+  top: 60px; /* 调整位置避免遮挡模态框关闭按钮 */
+  right: 90px; /* 调整位置避免与运动完成印章重叠 */
   width: 60px;
   height: 60px;
   background-color: rgba(241, 196, 15, 0.85);

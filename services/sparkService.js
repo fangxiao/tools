@@ -1,24 +1,21 @@
 const axios = require('axios');
 require('dotenv').config();
 
-class QwenService {
+class SparkService {
     constructor() {
-        this.apiKey = process.env.QWEN_API_KEY;
-        this.model = process.env.QWEN_MODEL || 'qwen-plus';
-        this.apiUrl = process.env.QWEN_API_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-        
-        if (!this.apiKey) {
-            console.warn('警告: QWEN_API_KEY 未设置，AI建议功能将不可用');
-        }
+        // 讯飞星火API配置
+        this.apiUrl = 'https://spark-api-open.xf-yun.com/v1/chat/completions';
+        this.apiKey = process.env.SPARK_API_KEY || 'hkkdhRUdnrXkkDtAMrFz:CKFQKyeLzhvXsyhggfOY';
+        this.model = process.env.SPARK_MODEL || 'lite';
     }
-    
+
     /**
      * 检查服务是否可用
      */
     isAvailable() {
         return !!this.apiKey;
     }
-    
+
     /**
      * 根据用户运动数据生成个性化建议
      * @param {Object} userData - 用户运动数据
@@ -26,18 +23,21 @@ class QwenService {
      */
     async generateRecommendations(userData) {
         if (!this.isAvailable()) {
-            console.warn('Qwen API密钥未设置，AI建议功能将不可用');
+            console.warn('讯飞星火API密钥未设置，AI建议功能将不可用');
             return ['AI建议服务暂不可用'];
         }
-        
+
         try {
             const prompt = this.constructPrompt(userData);
             
-            console.log('正在调用Qwen API生成运动建议...');
+            console.log('正在调用讯飞星火API生成运动建议...');
             console.log('使用模型:', this.model);
-            
+
             const response = await axios.post(this.apiUrl, {
                 model: this.model,
+                max_tokens: 4096,
+                top_k: 4,
+                temperature: 0.5,
                 messages: [
                     {
                         role: 'system',
@@ -47,20 +47,21 @@ class QwenService {
                         role: 'user',
                         content: prompt
                     }
-                ]
+                ],
+                stream: false
             }, {
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             // 解析响应并提取建议
             const content = response.data.choices[0].message.content;
-            console.log('Qwen API调用成功，返回建议内容:', content);
+            console.log('讯飞星火API调用成功，返回建议内容:', content);
             return this.parseRecommendations(content);
         } catch (error) {
-            console.error('Qwen API调用失败:', error.message);
+            console.error('Spark API调用失败:', error.message);
             if (error.response) {
                 console.error('响应状态:', error.response.status);
                 console.error('响应数据:', error.response.data);
@@ -68,7 +69,7 @@ class QwenService {
             return ['暂时无法获取AI建议，请稍后再试'];
         }
     }
-    
+
     /**
      * 构造提示词
      * @param {Object} userData - 用户运动数据
@@ -76,60 +77,60 @@ class QwenService {
      */
     constructPrompt(userData) {
         let prompt = `根据以下运动数据为用户提供建议:\n`;
-        
+
         if (userData.totalRecords !== undefined) {
             prompt += `- 本月运动次数: ${userData.totalRecords}次\n`;
         }
-        
+
         if (userData.totalDistance !== undefined) {
             prompt += `- 本月运动距离: ${userData.totalDistance.toFixed(1)}km\n`;
         }
-        
+
         if (userData.exerciseTypeCount !== undefined) {
             prompt += `- 运动类型数量: ${userData.exerciseTypeCount}种\n`;
         }
-        
+
         if (userData.exerciseTypes && userData.exerciseTypes.length > 0) {
             prompt += `- 运动类型包括: ${userData.exerciseTypes.join(', ')}\n`;
         }
-        
+
         if (userData.goalProgress !== undefined) {
             prompt += `- 目标完成率: ${userData.goalProgress.toFixed(1)}%\n`;
         }
-        
+
         if (userData.goalTarget !== undefined) {
             prompt += `- 目标距离: ${userData.goalTarget}km\n`;
         }
-        
+
         if (userData.goalAchieved !== undefined) {
             prompt += `- 目标是否完成: ${userData.goalAchieved ? '是' : '否'}\n`;
         }
-        
+
         if (userData.weightChange !== undefined) {
             prompt += `- 体重变化: ${userData.weightChange > 0 ? '增加' : '减少'}${Math.abs(userData.weightChange).toFixed(1)}kg\n`;
         }
-        
+
         if (userData.initialWeight !== undefined) {
             prompt += `- 初始体重: ${userData.initialWeight}kg\n`;
         }
-        
+
         if (userData.currentWeight !== undefined) {
             prompt += `- 当前体重: ${userData.currentWeight}kg\n`;
         }
-        
+
         if (userData.targetWeight !== undefined) {
             prompt += `- 目标体重: ${userData.targetWeight}kg\n`;
         }
-        
+
         if (userData.distanceToTarget !== undefined) {
             prompt += `- 距离目标体重: ${userData.distanceToTarget.toFixed(1)}kg\n`;
         }
-        
+
         prompt += '\n请根据这些数据提供3-5条个性化的运动建议:';
-        
+
         return prompt;
     }
-    
+
     /**
      * 解析AI返回的建议文本
      * @param {string} content - AI返回的内容
@@ -142,6 +143,44 @@ class QwenService {
             .filter(line => line.length > 0)
             .slice(0, 5); // 最多返回5条建议
     }
+
+    /**
+     * 测试API连接
+     */
+    async testConnection() {
+        try {
+            const response = await axios.post(this.apiUrl, {
+                model: this.model,
+                max_tokens: 1024,
+                top_k: 4,
+                temperature: 0.5,
+                messages: [
+                    {
+                        role: "user",
+                        content: "你好，请简单介绍一下自己"
+                    }
+                ],
+                stream: false
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return {
+                success: true,
+                message: response.data.choices[0].message.content
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: error.message,
+                status: error.response ? error.response.status : null,
+                data: error.response ? error.response.data : null
+            };
+        }
+    }
 }
 
-module.exports = new QwenService();
+module.exports = new SparkService();

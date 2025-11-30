@@ -978,4 +978,49 @@ document.addEventListener('DOMContentLoaded', function() {
         return '';
     }
 
+    // 先确保html2canvas已加载
+    function loadHtml2Canvas() {
+        return new Promise((resolve, reject) => {
+            // 检查是否已经加载了html2canvas
+            if (window.html2canvas) {
+                resolve(window.html2canvas);
+                return;
+            }
+            
+            // 动态创建script标签加载本地的html2canvas
+            const script = document.createElement('script');
+            script.src = '/tools/exercise/src/libs/html2canvas.min.js';
+            script.onload = () => {
+                // 等待一点时间让库初始化
+                setTimeout(() => {
+                    // 检查各种可能的导出方式
+                    if (typeof window.html2canvas === 'function') {
+                        resolve(window.html2canvas);
+                    } else if (window.html2canvas && typeof window.html2canvas.default === 'function') {
+                        window.html2canvas = window.html2canvas.default;
+                        resolve(window.html2canvas);
+                    } else if (window.html2canvas && typeof window.html2canvas.html2canvas === 'function') {
+                        resolve(window.html2canvas.html2canvas);
+                    } else if (typeof window.html2canvas === 'object') {
+                        // 查找对象中的函数
+                        for (let key in window.html2canvas) {
+                            if (typeof window.html2canvas[key] === 'function') {
+                                window.html2canvas = window.html2canvas[key];
+                                resolve(window.html2canvas);
+                                return;
+                            }
+                        }
+                        reject(new Error('html2canvas加载完成但未找到可调用的函数'));
+                    } else {
+                        reject(new Error('html2canvas加载完成但未定义或不是函数'));
+                    }
+                }, 100);
+            };
+            script.onerror = () => reject(new Error('html2canvas加载失败'));
+            document.head.appendChild(script);
+        });
+    }
+
+    
+
 });

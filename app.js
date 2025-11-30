@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
-const qwenService = require('./services/qwenService');
+const sparkService = require('./services/sparkService');
 const { 
   initializeDatabase,
   createUser,
@@ -1102,100 +1102,6 @@ app.delete('/api/visited-cities/:id', (req, res) => {
   });
 });
 
-// 获取AI运动建议
-app.get('/api/exercise-goals/:goalId/recommendations', async (req, res) => {
-  const { userId } = req.query;
-  const { goalId } = req.params;
-  
-  if (!userId) {
-    return res.status(400).json({ error: '需要提供用户ID' });
-  }
-  
-  try {
-    // 获取目标信息
-    getExerciseGoalById(goalId, userId, async (err, goal) => {
-      if (err) {
-        return res.status(500).json({ error: '查询运动目标失败' });
-      }
-      
-      if (!goal) {
-        return res.status(404).json({ error: '运动目标未找到' });
-      }
-      
-      // 获取所有记录用于分析
-      getExerciseRecordsByUser(userId, async (err, records) => {
-        if (err) {
-          return res.status(500).json({ error: '获取运动记录失败' });
-        }
-        
-        // 筛选出该目标的记录
-        const goalRecords = records.filter(record => record.goal_id == goalId);
-        
-        // 分析运动类型统计
-        const exerciseTypeStats = {};
-        let totalDistance = 0;
-        let totalRecords = goalRecords.length;
-        
-        goalRecords.forEach(record => {
-          if (!exerciseTypeStats[record.exercise_type]) {
-            exerciseTypeStats[record.exercise_type] = {
-              count: 0,
-              distance: 0
-            };
-          }
-          
-          exerciseTypeStats[record.exercise_type].count++;
-          exerciseTypeStats[record.exercise_type].distance += record.value;
-          totalDistance += record.value;
-        });
-        
-        // 计算目标进度
-        const progress = calculateGoalProgress(goal, records);
-        
-        // 准备用户数据用于AI建议
-        const userData = {
-          totalRecords,
-          totalDistance: totalDistance,
-          exerciseTypeCount: Object.keys(exerciseTypeStats).length,
-          exerciseTypes: Object.keys(exerciseTypeStats),
-          goalProgress: progress.percentage,
-          goalTarget: goal.target,
-          goalAchieved: progress.current >= goal.target
-        };
-        
-        // 添加体重数据（如果有）
-        if (goal.initial_weight && goal.current_weight) {
-          userData.weightChange = goal.current_weight - goal.initial_weight;
-          userData.initialWeight = goal.initial_weight;
-          userData.currentWeight = goal.current_weight;
-        }
-        
-        if (goal.target_weight) {
-          userData.targetWeight = goal.target_weight;
-          userData.distanceToTarget = Math.abs(goal.current_weight - goal.target_weight);
-        }
-        
-        // 获取AI建议
-        if (qwenService.isAvailable()) {
-          try {
-            const recommendations = await qwenService.generateRecommendations(userData);
-            res.json({ recommendations });
-          } catch (error) {
-            console.error('获取AI建议失败:', error);
-            res.json({ recommendations: ['暂时无法获取AI建议'] });
-          }
-        } else {
-          // 如果AI服务不可用，返回默认建议
-          res.json({ recommendations: getDefaultRecommendations(userData) });
-        }
-      });
-    });
-  } catch (error) {
-    console.error('获取AI建议时出错:', error);
-    res.status(500).json({ error: '获取AI建议失败' });
-  }
-});
-
 /**
  * 计算目标进度
  */
@@ -1228,66 +1134,6 @@ function calculateGoalProgress(goal, records) {
     target: goal.target,
     percentage: goal.target > 0 ? (current / goal.target) * 100 : 0
   };
-}
-
-/**
- * 获取默认建议（当AI服务不可用时）
- */
-function getDefaultRecommendations(userData) {
-  const recommendations = [];
-  
-  if (userData.totalRecords === 0) {
-    recommendations.push("👋 你好！看起来你还没有开始运动。建议从简单的运动开始，比如每天散步30分钟，逐渐培养运动习惯。");
-    recommendations.push("📝 制定一个现实可行的运动计划，比如每周运动3次，每次30分钟。");
-    recommendations.push("👟 选择你感兴趣的运动，这样更容易坚持下去。");
-    return recommendations;
-  }
-  
-  // 多样性建议
-  if (userData.exerciseTypeCount < 3) {
-    recommendations.push("🔄 你尝试的运动类型较少，建议尝试更多种类的运动，比如游泳、瑜伽或骑行，多样化的运动有助于全面提升身体素质。");
-  }
-  
-  // 频率建议
-  if (userData.totalRecords < 10) {
-    recommendations.push("📅 本月运动次数较少，建议增加运动频率，每周至少进行3-4次运动。可以尝试将运动安排在固定时间，养成习惯。");
-  }
-  
-  // 运动量建议
-  if (userData.totalDistance < 50) {
-    recommendations.push("💪 本月运动总量偏低，建议适当增加每次运动的距离或时间。可以每周增加10%的运动量，循序渐进地提升。");
-  }
-  
-  // 积极反馈
-  recommendations.push("🌟 你已经养成了运动的好习惯！继续保持，并注意运动前热身和运动后拉伸，避免运动损伤。");
-  
-  // 高级建议
-  if (userData.exerciseTypeCount >= 3 && userData.totalRecords >= 10) {
-    recommendations.push("🚀 你已经是运动达人了！可以考虑挑战更高难度的运动项目，或者尝试参加马拉松等赛事。");
-  }
-  
-  // 体重相关建议
-  if (userData.weightChange !== undefined) {
-    if (userData.weightChange > 0) {
-      recommendations.push("📈 你的体重有所上升，建议关注饮食和运动的平衡，可以增加有氧运动，如跑步、骑车等。");
-    } else if (userData.weightChange < 0) {
-      recommendations.push("📉 你的体重有所下降，继续保持健康的运动习惯！注意营养摄入，避免过度减重。");
-    }
-  }
-  
-  if (userData.distanceToTarget !== undefined) {
-    if (userData.distanceToTarget > 2) {
-      if (userData.currentWeight > userData.targetWeight) {
-        recommendations.push("🎯 你距离目标体重还有一定距离，建议增加有氧运动，如跑步、骑车等，并控制饮食热量摄入。");
-      } else {
-        recommendations.push("🎯 你已经超过目标体重，建议适当增加力量训练并关注营养摄入，保持健康体重。");
-      }
-    } else {
-      recommendations.push("🎉 恭喜你接近或达到目标体重！继续保持良好的运动和饮食习惯。");
-    }
-  }
-  
-  return recommendations.slice(0, 5); // 最多返回5条建议
 }
 
 // 健康检查路由
@@ -1326,6 +1172,29 @@ const readLimiter = rateLimit({
   max: 200, // 读操作可以更宽松
   message: {
     error: '请求过于频繁，请稍后再试'
+  }
+});
+
+// 讯飞星火AI建议API端点
+app.post('/api/spark/recommendations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const userData = req.body;
+    
+    // 调用讯飞星火服务生成建议
+    const recommendations = await sparkService.generateRecommendations(userData);
+    
+    res.json({ 
+      success: true,
+      recommendations 
+    });
+  } catch (error) {
+    logError(error, req);
+    res.status(500).json({ 
+      success: false,
+      error: '服务器内部错误',
+      message: process.env.NODE_ENV === 'production' ? '服务器内部错误' : error.message
+    });
   }
 });
 
