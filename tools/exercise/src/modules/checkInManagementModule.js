@@ -41,6 +41,11 @@ const CheckInManagementModule = (function() {
             return Promise.reject(new Error('请填写所有必填字段'));
         }
         
+        // 验证运动量大于0
+        if (recordData.value <= 0) {
+            return Promise.reject(new Error('运动量必须大于0'));
+        }
+        
         const requestData = {
             goalId: recordData.goalId,
             exerciseType: recordData.exerciseType,
@@ -48,6 +53,11 @@ const CheckInManagementModule = (function() {
             recordDate: recordData.recordDate,
             note: recordData.note
         };
+        
+        // 如果有图片，添加到请求中
+        if (recordData.image) {
+            requestData.image = recordData.image;
+        }
         
         // 发送到服务器
         return fetch(`/api/exercise-records?userId=${currentUser.id}`, {
@@ -121,6 +131,11 @@ const CheckInManagementModule = (function() {
         // 验证必要字段
         if (!recordData.exerciseType || !recordData.value || !recordData.recordDate) {
             return Promise.reject(new Error('请填写所有必填字段'));
+        }
+        
+        // 验证运动量大于0
+        if (recordData.value <= 0) {
+            return Promise.reject(new Error('运动量必须大于0'));
         }
         
         const requestData = {

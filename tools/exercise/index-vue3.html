@@ -222,7 +222,7 @@
                                     <div class="progress-text">{{ imageUploadProgress }}%</div>
                                 </div>
                                 <div v-if="checkInForm.uploadedImageUrl" class="upload-success">
-                                    图片已上传成功
+                                    图片已上传成功: {{ checkInForm.uploadedImageUrl }}
                                 </div>
                             </div>
                         </div>
@@ -309,7 +309,7 @@
                                         </div>
                                         <div v-if="record.note" class="detail-record-note">{{ record.note }}</div>
                                         <div v-if="record.image_path" class="detail-record-image">
-                                            <a :href="record.image_path" target="_blank" class="image-link">查看图片</a>
+                                            <a :href="'/uploads/' + record.image_path" target="_blank" class="image-link">查看图片</a>
                                         </div>
                                         <div class="detail-record-actions">
                                             <button class="btn-edit-small" @click="showEditRecordModal(record)">编辑</button>
@@ -355,6 +355,29 @@
                             <div class="form-group">
                                 <label for="edit-record-note">备注（可选）：</label>
                                 <input type="text" id="edit-record-note" v-model="editRecordForm.note">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-record-image">图片（可选）：</label>
+                                <input type="file" id="edit-record-image" @change="handleEditRecordImageUpload" accept="image/*">
+                                <div v-if="editRecordForm.imagePreview" class="image-preview">
+                                    <img :src="editRecordForm.imagePreview" alt="预览图片" style="max-width: 200px; max-height: 200px;">
+                                </div>
+                                <div v-if="isUploadingImage" class="upload-progress">
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" :style="{ width: imageUploadProgress + '%' }"></div>
+                                    </div>
+                                    <div class="progress-text">{{ imageUploadProgress }}%</div>
+                                </div>
+                                <div v-if="editRecordForm.uploadedImageUrl" class="upload-success">
+                                    图片已上传成功
+                                </div>
+                                <div v-if="editRecordForm.existingImageUrl" class="existing-image">
+                                    <p>当前图片:</p>
+                                    <a :href="'/uploads/' + editRecordForm.existingImageUrl" target="_blank" class="image-link">查看图片</a>
+                                    <button type="button" @click="deleteExistingImage" class="btn-delete-small">删除图片</button>
+                                </div>
                             </div>
                         </div>
                         <div class="form-row">
@@ -433,7 +456,7 @@
                                 <div class="progress-info">
                                     <span class="progress-label">完成度:</span>
                                     <span class="progress-value">{{ summaryStats.progress.current.toFixed(1) }}/{{ summaryStats.progress.target }} km</span>
-                                    <span class="progress-percent">({{ summaryStats.progress.percentage.toFixed(1) }}%)</span>
+                                    <span class="progress-percent">({{ summaryStats.progress.percentage.toFixed(1)}}%)</span>
                                 </div>
                                 <div class="progress-bar-container">
                                     <div class="progress-bar" 
@@ -556,7 +579,11 @@
                     value: 0,
                     weight: null,
                     date: '',
-                    note: ''
+                    note: '',
+                    existingImageUrl: null, // 现有的图片URL
+                    uploadedImageUrl: null, // 新上传的图片URL
+                    imagePreview: null,     // 图片预览
+                    deletedImage: false     // 是否删除图片标记
                 });
                 
                 // 模态框状态
@@ -973,10 +1000,9 @@
                             return;
                         }
 
-                        // 检查文件类型
-                        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
-                        if (!allowedTypes.includes(file.type)) {
-                            showAlert('只支持JPEG、PNG、GIF、WebP和BMP格式的图片', 'error');
+                        // 检查文件类型 - 与后端保持一致，只要是image/开头的MIME类型都可以
+                        if (!file.type.startsWith('image/')) {
+                            showAlert('只支持图片文件', 'error');
                             event.target.value = ''; // 清空文件输入
                             return;
                         }
@@ -1012,7 +1038,12 @@
                                         const response = JSON.parse(xhr.responseText);
                                         resolve(response.imageUrl);
                                     } else {
-                                        reject(new Error('图片上传失败'));
+                                        try {
+                                            const errorResponse = JSON.parse(xhr.responseText);
+                                            reject(new Error(errorResponse.error || '图片上传失败'));
+                                        } catch (e) {
+                                            reject(new Error('图片上传失败'));
+                                        }
                                     }
                                 };
                                 
@@ -1035,6 +1066,7 @@
                             event.target.value = ''; // 清空文件输入
                             checkInForm.image = null;
                             checkInForm.imagePreview = null;
+                            checkInForm.uploadedImageUrl = null;
                         } finally {
                             isUploadingImage.value = false;
                             imageUploadProgress.value = 0;
@@ -1046,54 +1078,126 @@
                     }
                 };
 
+                // 处理编辑记录时的图片上传
+                const handleEditRecordImageUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (file) {
+                        // 检查文件大小（最大10MB）
+                        if (file.size > 10 * 1024 * 1024) {
+                            showAlert('图片大小不能超过10MB', 'error');
+                            event.target.value = ''; // 清空文件输入
+                            return;
+                        }
+
+                        // 检查文件类型 - 与后端保持一致，只要是image/开头的MIME类型都可以
+                        if (!file.type.startsWith('image/')) {
+                            showAlert('只支持图片文件', 'error');
+                            event.target.value = ''; // 清空文件输入
+                            return;
+                        }
+
+                        // 生成预览
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            editRecordForm.imagePreview = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+
+                        // 立即上传图片
+                        isUploadingImage.value = true;
+                        imageUploadProgress.value = 0;
+                        
+                        try {
+                            const formData = new FormData();
+                            formData.append('image', file);
+
+                            const xhr = new XMLHttpRequest();
+                            
+                            // 监听上传进度
+                            xhr.upload.addEventListener('progress', (e) => {
+                                if (e.lengthComputable) {
+                                    imageUploadProgress.value = Math.round((e.loaded / e.total) * 100);
+                                }
+                            });
+
+                            // 创建Promise来处理异步上传
+                            const uploadPromise = new Promise((resolve, reject) => {
+                                xhr.onload = () => {
+                                    if (xhr.status === 200) {
+                                        const response = JSON.parse(xhr.responseText);
+                                        resolve(response.imageUrl);
+                                    } else {
+                                        try {
+                                            const errorResponse = JSON.parse(xhr.responseText);
+                                            reject(new Error(errorResponse.error || '图片上传失败'));
+                                        } catch (e) {
+                                            reject(new Error('图片上传失败'));
+                                        }
+                                    }
+                                };
+                                
+                                xhr.onerror = () => {
+                                    reject(new Error('网络错误'));
+                                };
+                            });
+
+                            // 发送请求
+                            xhr.open('POST', `/api/upload-image?userId=${currentUser.value.id}`);
+                            xhr.send(formData);
+
+                            // 等待上传完成
+                            editRecordForm.uploadedImageUrl = await uploadPromise;
+                            showAlert('图片上传成功', 'success');
+                        } catch (error) {
+                            console.error('图片上传失败:', error);
+                            showAlert('图片上传失败: ' + error.message, 'error');
+                            event.target.value = ''; // 清空文件输入
+                            editRecordForm.imagePreview = null;
+                            editRecordForm.uploadedImageUrl = null;
+                        } finally {
+                            isUploadingImage.value = false;
+                            imageUploadProgress.value = 0;
+                        }
+                    } else {
+                        editRecordForm.imagePreview = null;
+                        editRecordForm.uploadedImageUrl = null;
+                    }
+                };
+
+                // 删除现有图片
+                const deleteExistingImage = () => {
+                    editRecordForm.existingImageUrl = null;
+                    editRecordForm.deletedImage = true;
+                    showAlert('图片标记为删除，保存后生效', 'info');
+                };
+
                 // 提交打卡
                 const submitCheckIn = async () => {
                     if (!checkAuth()) return;
                     
                     isSubmittingCheckIn.value = true;
                     try {
-                        // 如果有已上传的图片，则只需要传递图片URL
-                        if (checkInForm.uploadedImageUrl) {
-                            const recordData = {
-                                goalId: checkInForm.goalId,
-                                exerciseType: checkInForm.exerciseType,
-                                value: checkInForm.value,
-                                recordDate: checkInForm.date,
-                                note: checkInForm.note,
-                                imagePath: checkInForm.uploadedImageUrl
-                            };
-                            
-                            if (checkInForm.weight) {
-                                recordData.weight = checkInForm.weight;
-                            }
-
-                            const response = await fetch(`/api/exercise-records?userId=${currentUser.value.id}`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(recordData)
-                            });
-                        } else {
-                            // 没有预先上传的图片，直接上传所有数据
-                            const formData = new FormData();
-                            formData.append('goalId', checkInForm.goalId);
-                            formData.append('exerciseType', checkInForm.exerciseType);
-                            formData.append('value', checkInForm.value);
-                            formData.append('recordDate', checkInForm.date);
-                            formData.append('note', checkInForm.note);
-                            if (checkInForm.weight) {
-                                formData.append('weight', checkInForm.weight);
-                            }
-                            if (checkInForm.image) {
-                                formData.append('image', checkInForm.image);
-                            }
-
-                            const response = await fetch(`/api/exercise-records?userId=${currentUser.value.id}`, {
-                                method: 'POST',
-                                body: formData
-                            });
+                        // 准备打卡数据
+                        const recordData = {
+                            goalId: checkInForm.goalId,
+                            exerciseType: checkInForm.exerciseType,
+                            value: checkInForm.value,
+                            recordDate: checkInForm.date,
+                            note: checkInForm.note,
+                            imagePath: checkInForm.uploadedImageUrl || null
+                        };
+                        
+                        if (checkInForm.weight) {
+                            recordData.weight = checkInForm.weight;
                         }
+
+                        const response = await fetch(`/api/exercise-records?userId=${currentUser.value.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(recordData)
+                        });
 
                         if (!response.ok) {
                             const errorData = await response.json();
@@ -1102,6 +1206,11 @@
 
                         showAlert('打卡成功！', 'success');
                         closeModal();
+                        
+                        // 清空图片上传相关字段
+                        checkInForm.image = null;
+                        checkInForm.imagePreview = null;
+                        checkInForm.uploadedImageUrl = null;
                         
                         // 如果有体重数据，则更新目标的当前体重
                         if (checkInForm.weight) {
@@ -1145,6 +1254,10 @@
                         editRecordForm.weight = recordDetails.weight;
                         editRecordForm.date = recordDetails.record_date;
                         editRecordForm.note = recordDetails.note;
+                        editRecordForm.existingImageUrl = recordDetails.image_path || null; // 加载现有图片路径
+                        editRecordForm.uploadedImageUrl = null; // 清空新上传的图片
+                        editRecordForm.imagePreview = null; // 清空预览
+                        editRecordForm.deletedImage = false; // 重置删除标记
                         
                         modal.visible = true;
                         modal.type = 'editRecord';
@@ -1160,12 +1273,25 @@
                     
                     isUpdatingRecord.value = true;
                     try {
+                        // 准备记录数据
                         const recordData = {
                             exerciseType: editRecordForm.exerciseType,
                             value: editRecordForm.value,
                             recordDate: editRecordForm.date,
                             note: editRecordForm.note
                         };
+                        
+                        // 处理图片
+                        if (editRecordForm.deletedImage) {
+                            // 如果标记为删除图片，则设置imagePath为null
+                            recordData.imagePath = null;
+                        } else if (editRecordForm.uploadedImageUrl) {
+                            // 如果有新上传的图片，则使用新图片
+                            recordData.imagePath = editRecordForm.uploadedImageUrl;
+                        } else if (editRecordForm.existingImageUrl) {
+                            // 如果保留现有图片，则继续使用现有图片
+                            recordData.imagePath = editRecordForm.existingImageUrl;
+                        }
                         
                         // 使用打卡管理模块更新记录
                         window.CheckInManagementModule.setCurrentUser(currentUser.value);
@@ -1538,18 +1664,51 @@
                 };
                 
                 const closeModal = () => {
+                    // 先保存当前的modal类型用于判断
+                    const currentType = modal.type;
+                    
+                    // 清空所有表单数据
+                    if (currentType === 'checkin') {
+                        checkInForm.goalId = '';
+                        checkInForm.exerciseType = 'running';
+                        checkInForm.value = 0;
+                        checkInForm.weight = null;
+                        checkInForm.date = new Date().toISOString().split('T')[0];
+                        checkInForm.note = '';
+                        checkInForm.image = null;
+                        checkInForm.imagePreview = null;
+                        checkInForm.uploadedImageUrl = null;
+                        
+                        // 清除文件输入元素
+                        const fileInput = document.getElementById('checkin-image');
+                        if (fileInput) {
+                            fileInput.value = '';
+                        }
+                    } else if (currentType === 'editRecord') {
+                        editRecordForm.id = null;
+                        editRecordForm.exerciseType = '';
+                        editRecordForm.value = 0;
+                        editRecordForm.weight = null;
+                        editRecordForm.date = '';
+                        editRecordForm.note = '';
+                        editRecordForm.existingImageUrl = null;
+                        editRecordForm.uploadedImageUrl = null;
+                        editRecordForm.imagePreview = null;
+                        editRecordForm.deletedImage = false;
+                        
+                        // 清除文件输入元素
+                        const editFileInput = document.getElementById('edit-record-image');
+                        if (editFileInput) {
+                            editFileInput.value = '';
+                        }
+                    } else {
+                        // 其他模态框类型
+                        resetGoalForm();
+                    }
+                    
                     modal.visible = false;
                     modal.type = '';
                     modal.title = '';
-                    // 清除图片预览和上传状态
-                    checkInForm.image = null;
-                    checkInForm.imagePreview = null;
-                    checkInForm.uploadedImageUrl = null;
-                    // 清除文件输入元素
-                    const fileInput = document.getElementById('checkin-image');
-                    if (fileInput) {
-                        fileInput.value = '';
-                    }
                 };
                 
                 const showConfirm = (title, message, onConfirm, onCancel) => {
@@ -1661,7 +1820,10 @@
                     logout,
                     calculateTimeProgress,
                     getWeightChangeClass,
-                    exportSummaryAsImage
+                    exportSummaryAsImage,
+                    handleImageUpload,
+                    handleEditRecordImageUpload,
+                    deleteExistingImage
                 };
             }
         }).mount('#app');

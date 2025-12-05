@@ -832,7 +832,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <button class="modal-close" onclick="closeModal()">&times;</button>
                         </div>
                         <div class="modal-body">
-                            <form id="checkin-form">
+                            <form id="checkin-form" enctype="multipart/form-data">
                                 <input type="hidden" id="checkin-goal-id" value="${goalId}">
                                 <div class="form-row">
                                     <div class="form-group">
@@ -863,8 +863,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label for="checkin-image">打卡截图（可选）：</label>
+                                        <label for="checkin-image">打卡截图（可选，小于10MB）：</label>
                                         <input type="file" id="checkin-image" accept="image/*">
+                                        <div id="image-upload-result"></div>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -923,6 +924,9 @@ document.addEventListener('DOMContentLoaded', function() {
             existingModal.parentNode.removeChild(existingModal);
         }
         
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
         // Load goals to find the selected goal
         fetch(`/api/exercise-goals?userId=${currentUser.id}`)
             .then(response => response.json())
@@ -980,6 +984,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <div class="detail-record-value">${record.value} ${unit}</div>
                                         </div>
                                         ${record.note ? `<div class="detail-record-note">${record.note}</div>` : ''}
+                                        ${record.image_path ? `<div class="detail-record-image"><img src="${record.image_path}" alt="打卡图片" style="max-width: 100%; height: auto; margin-top: 10px;"></div>` : ''}
                                         <div class="detail-record-actions">
                                             <button class="btn-edit-small" onclick="editRecord(${record.id})">编辑</button>
                                             <button class="btn-delete-small" onclick="deleteRecord(${record.id})">删除</button>
@@ -1546,61 +1551,89 @@ document.addEventListener('DOMContentLoaded', function() {
         const note = document.getElementById('checkin-note')?.value;
         const imageInput = document.getElementById('checkin-image');
         
+        // Validation
         if (!exerciseType || isNaN(value)) {
             showAlert('请填写完整的运动信息', 'error');
             return;
         }
         
-        // Create record data
-        const recordData = {
-            goalId: parseInt(goalId),
-            exerciseType: exerciseType,
-            value: value,
-            recordDate: date,
-            note: note
-        };
+        // Check that value is greater than 0
+        if (value <= 0) {
+            showAlert('运动量必须大于0', 'error');
+            return;
+        }
+        
+        // Handle image upload
+        const formData = new FormData();
+        formData.append('goalId', goalId);
+        formData.append('exerciseType', exerciseType);
+        formData.append('value', value);
+        formData.append('recordDate', date);
+        formData.append('note', note || '');
+        
+        if (imageInput.files.length > 0) {
+            const file = imageInput.files[0];
+            
+            // Check file size (less than 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showAlert('图片大小不能超过10MB', 'error');
+                return;
+            }
+            
+            // Check file type (popular image formats)
+            const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+            if (!allowedTypes.includes(file.type)) {
+                showAlert('只支持常见的图片格式 (JPEG, PNG, GIF, WebP, BMP)', 'error');
+                return;
+            }
+            
+            formData.append('image', file);
+        }
         
         // Send record to server
         fetch(`/api/exercise-records?userId=${currentUser.id}`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(recordData)
+            body: formData
         })
         .then(response => {
             if (response.ok) {
-                // If weight is provided, update the goal's current weight
-                if (!isNaN(weight)) {
-                    return fetch(`/api/exercise-goals/${goalId}/weight?userId=${currentUser.id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ currentWeight: weight })
-                    });
-                }
-                return Promise.resolve({ ok: true });
+                return response.json();
             } else {
-                throw new Error('打卡失败');
+                return response.json().then(data => {
+                    throw new Error(data.error || '打卡失败');
+                });
             }
         })
-        .then(response => {
-            if (!response || response.ok) {
-                // Close modal
-                closeModal();
-                
-                // Refresh display
-                displayGoals();
-                
-                showAlert('打卡成功！', 'success');
-            } else {
-                throw new Error('更新体重失败');
+        .then(data => {
+            // If weight is provided, update the goal's current weight
+            if (!isNaN(weight)) {
+                return fetch(`/api/exercise-goals/${goalId}/weight?userId=${currentUser.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ currentWeight: weight })
+                }).then(response => {
+                    if (!response.ok) {
+                        throw new Error('更新体重失败');
+                    }
+                    return data;
+                });
             }
+            return data;
+        })
+        .then(() => {
+            // Close modal
+            closeModal();
+            
+            // Refresh display
+            displayGoals();
+            
+            showAlert('打卡成功！', 'success');
         })
         .catch(error => {
             console.error('Error saving check-in:', error);
-            showAlert('打卡失败', 'error');
+            showAlert('打卡失败: ' + error.message, 'error');
         });
     }
 

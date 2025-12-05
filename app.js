@@ -25,23 +25,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// 文件过滤器 - 只允许图片
-const fileFilter = (req, file, cb) => {
-  // 检查文件类型
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('只允许上传图片文件'), false);
-  }
-};
-
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB限制
-  }
-});
 
 const { 
   initializeDatabase,
@@ -147,13 +130,20 @@ app.use(express.static('public'));
 app.use('/tools/exercise', express.static('tools/exercise'));
 app.use('/tools/exercise/src/libs', express.static('tools/exercise/src/libs'));
 app.use('/tools/roi', express.static('tools/roi'));
-
-// 为上传的文件提供静态资源服务
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
 // 图片上传接口
 app.post('/api/upload-image', upload.single('image'), (req, res) => {
   const { userId } = req.query;
+  
+  // 记录上传文件信息到日志
+  if (req.file) {
+    console.log(`图片上传 - 用户ID: ${userId}, 文件名: ${req.file.originalname}, MIME类型: ${req.file.mimetype}, 大小: ${req.file.size} bytes`);
+  } else if (req.files) {
+    console.log(`多文件上传 - 用户ID: ${userId}, 文件数量: ${req.files.length}`);
+  } else {
+    console.log(`无文件上传 - 用户ID: ${userId}`);
+  }
   
   if (!userId) {
     return res.status(400).json({ error: '需要提供用户ID' });
@@ -170,15 +160,37 @@ app.post('/api/upload-image', upload.single('image'), (req, res) => {
     }
     
     if (!req.file) {
+      console.log('请求中没有文件:', req.headers, req.body);
       return res.status(400).json({ error: '没有上传文件' });
     }
     
     // 返回图片URL
     res.json({ 
-      imageUrl: '/uploads/' + req.file.filename,
+      imageUrl: req.file.filename,
       message: '图片上传成功'
     });
   });
+});
+
+// 文件过滤器 - 只允许图片
+const fileFilter = (req, file, cb) => {
+  // 检查文件类型
+  console.log(`文件类型检查 - 文件名: ${file.originalname}, MIME类型: ${file.mimetype}`);
+  
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    console.log(`文件类型被拒绝 - 文件名: ${file.originalname}, MIME类型: ${file.mimetype}`);
+    cb(new Error('只允许上传图片文件'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB限制
+  }
 });
 
 // 基础路由
@@ -912,12 +924,17 @@ app.put('/api/exercise-records/:id', upload.single('image'), (req, res) => {
       value: parseFloat(req.body.value),
       recordDate: req.body.recordDate,
       note: req.body.note || '',
-      imagePath: req.file ? '/uploads/' + req.file.filename : req.body.imagePath || null
+      imagePath: req.file ? req.file.filename : req.body.imagePath || null
     };
     
     // 验证必填字段
     if (!recordData.exerciseType || isNaN(recordData.value) || !recordData.recordDate) {
       return res.status(400).json({ error: '缺少必要字段' });
+    }
+    
+    // 验证运动量大于0
+    if (recordData.value <= 0) {
+      return res.status(400).json({ error: '运动量必须大于0' });
     }
     
     updateExerciseRecord(recordId, userId, recordData, (err) => {
@@ -1058,6 +1075,13 @@ app.get('/api/exercise-records/goal/:goalId', (req, res) => {
 app.post('/api/exercise-records', upload.single('image'), (req, res) => {
   const { userId } = req.query;
   
+  // 记录上传文件信息到日志
+  if (req.file) {
+    console.log(`运动记录图片上传 - 用户ID: ${userId}, 文件名: ${req.file.originalname}, MIME类型: ${req.file.mimetype}, 大小: ${req.file.size} bytes`);
+  } else if (req.body.imagePath) {
+    console.log(`运动记录使用已上传图片 - 用户ID: ${userId}, 图片路径: ${req.body.imagePath}`);
+  }
+  
   if (!userId) {
     return res.status(400).json({ error: '需要提供用户ID' });
   }
@@ -1078,12 +1102,17 @@ app.post('/api/exercise-records', upload.single('image'), (req, res) => {
       value: parseFloat(req.body.value),
       recordDate: req.body.recordDate,
       note: req.body.note || null,
-      imagePath: req.file ? '/uploads/' + req.file.filename : null
+      imagePath: req.file ? req.file.filename : (req.body.imagePath || null)
     };
     
-    // Check if goalId is valid
+    // Validate required fields
     if (isNaN(recordData.goalId)) {
       return res.status(400).json({ error: '需要提供有效的目标ID' });
+    }
+    
+    // Validate value is greater than 0
+    if (isNaN(recordData.value) || recordData.value <= 0) {
+      return res.status(400).json({ error: '运动量必须大于0' });
     }
     
     createExerciseRecord(userId, recordData, function(err) {
