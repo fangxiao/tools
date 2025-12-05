@@ -223,6 +223,7 @@ function initializeDatabase() {
       value REAL NOT NULL,
       record_date TEXT NOT NULL,
       note TEXT,
+      image_path TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users (id),
       FOREIGN KEY (goal_id) REFERENCES exercise_goals (id)
@@ -231,6 +232,15 @@ function initializeDatabase() {
         console.error('创建运动记录表失败:', err.message);
       } else {
         console.log('运动记录表已创建或已存在');
+      }
+    });
+    
+    // 为运动记录表添加image_path字段（如果不存在）
+    db.run(`ALTER TABLE exercise_records ADD COLUMN image_path TEXT`, (err) => {
+      if (err && !err.message.includes('duplicate column name')) {
+        console.error('更新运动记录表结构失败:', err.message);
+      } else if (!err) {
+        console.log('运动记录表结构已更新，添加了image_path字段');
       }
     });
     
@@ -665,7 +675,19 @@ function updateExerciseGoal(id, userId, goalData, callback) {
 
 function deleteExerciseGoal(id, userId, callback) {
   const sql = 'DELETE FROM exercise_goals WHERE id = ? AND user_id = ?';
-  db.run(sql, [id, userId], callback);
+  db.run(sql, [id, userId], function(err) {
+    if (err) {
+      return callback(err);
+    }
+    
+    // 检查是否有行被删除
+    if (this.changes === 0) {
+      // 没有找到匹配的记录，可能是因为ID不存在或者user_id不匹配
+      return callback(new Error('No matching record found'));
+    }
+    
+    callback(null);
+  });
 }
 
 function updateCurrentWeight(goalId, userId, currentWeight, callback) {
@@ -698,15 +720,16 @@ function getExerciseRecordById(recordId, userId, callback) {
 function createExerciseRecord(userId, recordData, callback) {
   const createdAt = new Date().toISOString();
   const sql = `INSERT INTO exercise_records 
-    (user_id, goal_id, exercise_type, value, record_date, note, created_at) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    (user_id, goal_id, exercise_type, value, record_date, note, image_path, created_at) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
   const params = [
     userId, 
     recordData.goalId, 
     recordData.exerciseType, 
     recordData.value, 
-    recordData.recordDate, 
+    recordData.recordDate,
     recordData.note,
+    recordData.imagePath || null,
     createdAt
   ];
   db.run(sql, params, callback);
@@ -714,13 +737,14 @@ function createExerciseRecord(userId, recordData, callback) {
 
 function updateExerciseRecord(recordId, userId, recordData, callback) {
   const sql = `UPDATE exercise_records SET 
-    exercise_type = ?, value = ?, record_date = ?, note = ?
+    exercise_type = ?, value = ?, record_date = ?, note = ?, image_path = ?
     WHERE id = ? AND user_id = ?`;
   const params = [
     recordData.exerciseType,
     recordData.value,
     recordData.recordDate,
     recordData.note,
+    recordData.imagePath || null,
     recordId,
     userId
   ];
@@ -728,6 +752,13 @@ function updateExerciseRecord(recordId, userId, recordData, callback) {
     if (err) {
       return callback(err);
     }
+    
+    // 检查是否有行被更新
+    if (this.changes === 0) {
+      // 没有找到匹配的记录，可能是因为ID不存在或者user_id不匹配
+      return callback(new Error('No matching record found'));
+    }
+    
     callback(null);
   });
 }

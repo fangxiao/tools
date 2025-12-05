@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运动目标管理 - Vue 3版</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/nav.css">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles-vue3.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <style>
+        .upload-progress {
+            margin-top: 10px;
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--dark-gray);
+        }
+
+        .upload-success {
+            color: var(--success-color);
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+    </style>
+    <script src="./src/libs/html2canvas.min.js"></script>
+    <script src="./src/modules/goalManagementModule.js"></script>
+    <script src="./src/modules/checkInManagementModule.js"></script>
+    
+</head>
+<body>
+    <div id="app" v-cloak>
+        <header>
+            <h1>运动目标管理</h1>
+            <div class="user-info" v-if="currentUser">
+                <span>欢迎, {{ currentUser.username }}!</span>
+                <button class="btn-logout" @click="logout">退出登录</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- 创建目标表单 -->
+            <section class="form-section">
+                <h2 class="section-title">创建新目标 
+                    <button class="btn-add" @click="showAddGoalModal()">+</button>
+                </h2>
+            </section>
+
+            <!-- 目标列表 -->
+
+            <!-- 目标列表 -->
+            <section class="goals-section">
+                <h2 class="section-title">我的运动目标</h2>
+                <div v-if="isLoadingGoals" class="loading">加载中...</div>
+                <div v-else-if="goals.length === 0" class="no-goals">暂无运动目标</div>
+                <div v-else class="goals-grid">
+                    <div v-for="goal in goals" :key="goal.id" class="goal-card">
+                        <div class="goal-header">
+                            <div class="goal-title">{{ goal.title }}{{ goal.visibility === 'private' ? ' 🔐' : '' }}</div>
+                            <div v-if="getGoalStatusBadge(goal)" class="goal-badge" :class="'goal-badge-' + getGoalStatusBadge(goal).type">
+                                {{ getGoalStatusBadge(goal).text }}
+                            </div>
+                        </div>
+                        
+                        <!-- 完成印章 -->
+                        <div v-if="goal.progress && goal.progress.percentage >= 100" class="stamp stamp-goal-completed" 
+                             :class="{ 'single-stamp': !(goal.initial_weight && goal.current_weight && goal.target_weight && calculateWeightProgress(goal) >= 100) }">
+                            运动完成
+                        </div>
+                        <div v-if="goal.initial_weight && goal.current_weight && goal.target_weight && calculateWeightProgress(goal) >= 100" 
+                             class="stamp stamp-weight-goal-completed" 
+                             :class="{ 'single-stamp': !(goal.progress && goal.progress.percentage >= 100) }">
+                            减重完成
+                        </div>
+                        
+                        <div class="goal-details">
+                            <div class="detail-row">
+                                <div class="detail-label">目标量:</div>
+                                <div class="detail-value">{{ goal.target }} km</div>
+                            </div>
+                            
+                            <div class="detail-row">
+                                <div class="detail-label">时间范围:</div>
+                                <div class="detail-value">{{ formatDate(goal.start_date) }} 至 {{ formatDate(goal.end_date) }}</div>
+                            </div>
+                            
+                            <div v-if="goal.initial_weight || goal.current_weight || goal.target_weight" class="detail-row">
+                                <div class="detail-label">体重信息:</div>
+                                <div class="detail-value">
+                                    <span v-if="goal.initial_weight">初始: {{ goal.initial_weight }}kg</span>
+                                    <span v-if="goal.current_weight"> 当前: {{ goal.current_weight }}kg</span>
+                                    <span v-if="goal.target_weight"> 目标: {{ goal.target_weight }}kg</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="goal-progress">
+                            <div class="goal-progress-section">
+                                <div class="progress-info">
+                                    <span class="progress-label">运动进度:</span>
+                                    <span class="progress-value">{{ goal.progress.current.toFixed(1) }} / {{ goal.target }} km</span>
+                                    <span class="progress-percent">({{ goal.progress.percentage.toFixed(1) }}%)</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" :style="{ width: Math.min(goal.progress.percentage, 100) + '%' }"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="goal-progress-section">
+                                <div class="progress-info">
+                                    <span class="progress-label">时间进度:</span>
+                                    <span class="progress-value">{{ calculateTimeProgress(goal).percentage.toFixed(1) }}%</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" style="background-color: #3498db" 
+                                         :style="{ width: Math.min(calculateTimeProgress(goal).percentage, 100) + '%' }"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- 体重目标进度展示 -->
+                            <div v-if="goal.initial_weight && goal.current_weight && goal.target_weight" class="goal-progress-section">
+                                <div class="progress-info">
+                                    <span class="progress-label">体重进度:</span>
+                                    <span class="progress-value">{{ calculateWeightProgressPercentage(goal).toFixed(1) }}%</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" 
+                                         :style="{ 
+                                             width: Math.min(100, calculateWeightProgressPercentage(goal)) + '%',
+                                             backgroundColor: getWeightProgressColor(goal)
+                                         }">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 进度落后提醒 -->
+                            <div v-if="goal.progress.percentage < calculateTimeProgress(goal).percentage" class="reminder-banner">
+                                💡 运动进度落后于时间进度，加油运动吧！
+                            </div>
+                            
+                            <!-- 目标完成状态提示 -->
+                            <div class="goal-status-text">
+                                <span v-if="goal.progress.percentage >= 100">🎉 目标已完成!</span>
+                                <span v-else-if="goal.progress.percentage >= 80">💪 快完成目标了!</span>
+                                <span v-else-if="goal.progress.percentage >= 50">👍 已完成一半以上!</span>
+                                <span v-else-if="goal.progress.percentage >= 30">🏃‍♂️ 加油，继续努力!</span>
+                                <span v-else>🚀 仍需努力，继续加油!</span>
+                            </div>
+                        </div>
+                        
+                        <div class="goal-actions">
+                            <button class="btn-use" @click="showCheckInModal(goal)">打卡</button>
+                            <button class="btn-details" @click="showDetailsModal(goal)">打卡明细</button>
+                            <button class="btn-summary" @click="showGoalSummary(goal)">汇总</button>
+                            <button class="btn-edit" @click="showEditGoalModal(goal)" v-if="goal.user_id == currentUser.id">编辑</button>
+                            <button class="btn-delete" @click="deleteGoal(goal)" v-if="goal.user_id == currentUser.id">删除</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- 模态框 -->
+        <div v-if="modal.visible" class="modal-overlay" @click.self="closeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>{{ modal.title }}</h3>
+                    <button class="modal-close" @click="closeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- 打卡模态框 -->
+                    <form v-if="modal.type === 'checkin'" @submit.prevent="submitCheckIn" id="checkin-form">
+                        <input type="hidden" v-model="checkInForm.goalId">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="checkin-exercise-type">运动类别：</label>
+                                <select id="checkin-exercise-type" v-model="checkInForm.exerciseType" required>
+                                    <option value="">选择运动类别</option>
+                                    <option v-for="type in exerciseTypes" :key="type.id" :value="type.id">
+                                        {{ type.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="checkin-value">运动量：</label>
+                                <input type="number" id="checkin-value" v-model.number="checkInForm.value" step="0.1" min="0" required>
+                                <span id="checkin-unit">{{ getExerciseUnit(checkInForm.exerciseType) }}</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="checkin-weight">体重（可选）：</label>
+                                <input type="number" id="checkin-weight" v-model.number="checkInForm.weight" step="0.1" min="0">
+                                <span>kg</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="checkin-date">日期：</label>
+                                <input type="date" id="checkin-date" v-model="checkInForm.date" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="checkin-note">备注（可选）：</label>
+                                <input type="text" id="checkin-note" v-model="checkInForm.note">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="checkin-image">图片（可选）：</label>
+                                <input type="file" id="checkin-image" @change="handleImageUpload" accept="image/*">
+                                <div v-if="checkInForm.imagePreview" class="image-preview">
+                                    <img :src="checkInForm.imagePreview" alt="预览图片" style="max-width: 200px; max-height: 200px;">
+                                </div>
+                                <div v-if="isUploadingImage" class="upload-progress">
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" :style="{ width: imageUploadProgress + '%' }"></div>
+                                    </div>
+                                    <div class="progress-text">{{ imageUploadProgress }}%</div>
+                                </div>
+                                <div v-if="checkInForm.uploadedImageUrl" class="upload-success">
+                                    图片已上传成功
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <button type="submit" class="btn-add" :disabled="isSubmittingCheckIn">
+                                    {{ isSubmittingCheckIn ? '提交中...' : '打卡' }}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- 创建/编辑目标模态框 -->
+                    <form v-else-if="modal.type === 'add' || modal.type === 'edit'" @submit.prevent="modal.type === 'add' ? addGoal() : updateGoal()" id="goal-form">
+                        <input type="hidden" v-model="editForm.id" v-if="modal.type === 'edit'">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="goal-title">{{ modal.type === 'add' ? '新建' : '编辑' }}目标标题:</label>
+                                <input type="text" id="goal-title" v-model="editForm.title" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="goal-target">目标值 (公里):</label>
+                                <input type="number" id="goal-target" v-model.number="editForm.target" step="0.1" min="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="goal-start-date">开始日期:</label>
+                                <input type="date" id="goal-start-date" v-model="editForm.startDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="goal-end-date">结束日期:</label>
+                                <input type="date" id="goal-end-date" v-model="editForm.endDate" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>体重目标 (可选):</label>
+                                <div class="weight-inputs">
+                                    <div class="weight-input">
+                                        <input type="number" v-model.number="editForm.initialWeight" step="0.1" min="0" placeholder="初始体重">
+                                    </div>
+                                    <div class="weight-input">
+                                        <input type="number" v-model.number="editForm.targetWeight" step="0.1" min="0" placeholder="目标体重">
+                                    </div>
+                                    <div class="weight-input" v-if="modal.type === 'edit'">
+                                        <input type="number" v-model.number="editForm.currentWeight" step="0.1" min="0" placeholder="当前体重">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="goal-visibility">可见性:</label>
+                                <select id="goal-visibility" v-model="editForm.visibility">
+                                    <option value="private">仅自己可见</option>
+                                    <option value="public">公开</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <button type="submit" class="btn-add" :disabled="modal.type === 'add' ? isAddingGoal : isUpdatingGoal">
+                                    {{ modal.type === 'add' ? (isAddingGoal ? '创建中...' : '创建目标') : (isUpdatingGoal ? '更新中...' : '更新目标') }}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- 打卡明细模态框 -->
+                    <div v-else-if="modal.type === 'details'">
+                        <div v-if="detailRecords.length === 0">暂无打卡记录</div>
+                        <div v-else>
+                            <div v-for="(records, date) in groupedDetailRecords" :key="date" class="detail-date-section">
+                                <div class="detail-date-header">
+                                    <h4>{{ date }} (总计: {{ calculateDailyTotal(records).toFixed(1) }} km)</h4>
+                                </div>
+                                <div class="detail-date-records">
+                                    <div v-for="record in records" :key="record.id" class="detail-record">
+                                        <div class="detail-record-info">
+                                            <div class="detail-record-type">{{ getExerciseTypeName(record.exercise_type) }}</div>
+                                            <div class="detail-record-value">{{ record.value }} {{ getExerciseUnit(record.exercise_type) }}</div>
+                                        </div>
+                                        <div v-if="record.note" class="detail-record-note">{{ record.note }}</div>
+                                        <div v-if="record.image_path" class="detail-record-image">
+                                            <a :href="record.image_path" target="_blank" class="image-link">查看图片</a>
+                                        </div>
+                                        <div class="detail-record-actions">
+                                            <button class="btn-edit-small" @click="showEditRecordModal(record)">编辑</button>
+                                            <button class="btn-delete-small" @click="deleteRecord(record)">删除</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 编辑记录模态框 -->
+                    <form v-else-if="modal.type === 'editRecord'" @submit.prevent="updateRecord" id="edit-record-form">
+                        <input type="hidden" v-model="editRecordForm.id">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-record-exercise-type">运动类别：</label>
+                                <select id="edit-record-exercise-type" v-model="editRecordForm.exerciseType" required>
+                                    <option value="">选择运动类别</option>
+                                    <option v-for="type in exerciseTypes" :key="type.id" :value="type.id">
+                                        {{ type.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-record-value">运动量：</label>
+                                <input type="number" id="edit-record-value" v-model.number="editRecordForm.value" step="0.1" min="0" required>
+                                <span id="edit-record-unit">{{ getExerciseUnit(editRecordForm.exerciseType) }}</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-record-weight">体重（可选）：</label>
+                                <input type="number" id="edit-record-weight" v-model.number="editRecordForm.weight" step="0.1" min="0">
+                                <span>kg</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-record-date">日期：</label>
+                                <input type="date" id="edit-record-date" v-model="editRecordForm.date" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-record-note">备注（可选）：</label>
+                                <input type="text" id="edit-record-note" v-model="editRecordForm.note">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <button type="submit" class="btn-add" :disabled="isUpdatingRecord">
+                                    {{ isUpdatingRecord ? '更新中...' : '更新记录' }}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- 汇总模态框 -->
+                    <div v-else-if="modal.type === 'summary'">
+                        <div class="modal-actions">
+                            <button class="btn-export-image" @click="exportSummaryAsImage">📷 生成长图</button>
+                        </div>
+                        
+                        <div class="summary-section">
+                            <h4>📊 运动数据统计</h4>
+                            <div class="summary-stats">
+                                <div class="stat-item">
+                                    <div class="stat-label">总打卡次数</div>
+                                    <div class="stat-value">{{ summaryStats.totalRecords }}</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">累计运动量</div>
+                                    <div class="stat-value">{{ summaryStats.totalDistance.toFixed(1) }} km</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">运动类型</div>
+                                    <div class="stat-value">{{ Object.keys(summaryStats.exerciseTypeStats).length }} 种</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-section" v-if="summaryStats.initialWeight || summaryStats.currentWeight || summaryStats.targetWeight">
+                            <h4>⚖️ 体重变化</h4>
+                            <div class="summary-stats weight-stats">
+                                <div class="stat-item" v-if="summaryStats.initialWeight">
+                                    <div class="stat-label">初始体重</div>
+                                    <div class="stat-value">{{ summaryStats.initialWeight }} kg</div>
+                                </div>
+                                <div class="stat-item" v-if="summaryStats.currentWeight">
+                                    <div class="stat-label">当前体重</div>
+                                    <div class="stat-value">{{ summaryStats.currentWeight }} kg</div>
+                                </div>
+                                <div class="stat-item" v-if="summaryStats.targetWeight">
+                                    <div class="stat-label">目标体重</div>
+                                    <div class="stat-value">{{ summaryStats.targetWeight }} kg</div>
+                                </div>
+                                <div class="stat-item" v-if="summaryStats.initialWeight && summaryStats.currentWeight">
+                                    <div class="stat-label">体重变化</div>
+                                    <div class="stat-value" :class="getWeightChangeClass(summaryStats)">
+                                        {{ (summaryStats.currentWeight - summaryStats.initialWeight).toFixed(1) }} kg
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-section">
+                            <h4>🏆 运动类型分布</h4>
+                            <div class="exercise-type-stats">
+                                <div v-for="(stats, typeName) in summaryStats.exerciseTypeStats" :key="typeName" class="type-stat">
+                                    <div class="type-name">{{ typeName }}</div>
+                                    <div class="type-details">
+                                        <span>{{ stats.count }} 次</span>
+                                        <span>{{ stats.distance.toFixed(1) }} {{ stats.unit }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-section">
+                            <h4>🎯 目标进度</h4>
+                            <div class="goal-progress-info">
+                                <div class="progress-info">
+                                    <span class="progress-label">完成度:</span>
+                                    <span class="progress-value">{{ summaryStats.progress.current.toFixed(1) }}/{{ summaryStats.progress.target }} km</span>
+                                    <span class="progress-percent">({{ summaryStats.progress.percentage.toFixed(1) }}%)</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" 
+                                         :style="{ width: summaryStats.progress.percentage + '%' }"
+                                         :class="{
+                                             'progress-bar-warning': summaryStats.progress.percentage >= 80 && summaryStats.progress.percentage < 100,
+                                             'progress-bar-success': summaryStats.progress.percentage >= 100
+                                         }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-section" v-if="summaryStats.aiRecommendations.length > 0 || summaryStats.aiLoading">
+                            <h4>🤖 AI个性化建议</h4>
+                            <div class="motivational-message ai-recommendations">
+                                <div v-if="summaryStats.aiLoading" class="ai-loading">
+                                    正在获取AI建议...
+                                </div>
+                                <div v-for="(rec, index) in summaryStats.aiRecommendations" :key="index">
+                                    {{ rec }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 确认对话框 -->
+        <div v-if="confirmDialog.visible" class="custom-confirm-overlay" @click.self="confirmDialog.onCancel">
+            <div class="custom-confirm">
+                <div class="custom-confirm-content">
+                    <p>{{ confirmDialog.message }}</p>
+                    <div class="custom-confirm-buttons">
+                        <button class="btn-confirm-no" type="button" @click="confirmDialog.onCancel">取消</button>
+                        <button class="btn-confirm-yes" type="button" @click="confirmDialog.onConfirm">确定</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提示框 -->
+        <div v-if="alert.visible" class="custom-alert" :class="'custom-alert-' + alert.type">
+            <span class="custom-alert-message">{{ alert.message }}</span>
+            <span class="custom-alert-close" @click="hideAlert">&times;</span>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                // 状态管理
+                const isLoadingGoals = ref(false);
+                const isAddingGoal = ref(false);
+                const isSubmittingCheckIn = ref(false);
+                const isUpdatingGoal = ref(false);
+                const isUpdatingRecord = ref(false);
+                const isUploadingImage = ref(false);  // 添加图片上传状态
+                const imageUploadProgress = ref(0);   // 添加图片上传进度
+                
+                // 数据
+                const goals = ref([]);
+                const detailRecords = ref([]);
+                const currentGoal = ref(null);
+                const summaryStats = reactive({
+                    exerciseTypeStats: {},
+                    totalDistance: 0,
+                    totalRecords: 0,
+                    progress: { current: 0, target: 0, percentage: 0 },
+                    aiRecommendations: [],
+                    aiLoading: false
+                });
+                const currentUser = ref(null);
+                const goalProgressMap = ref({});
+                
+                // 表单数据
+                const newGoal = reactive({
+                    period: 'monthly',
+                    title: '',
+                    target: 50,
+                    startDate: '',
+                    endDate: '',
+                    initialWeight: null,
+                    targetWeight: null,
+                    currentWeight: null, // 添加currentWeight字段
+                    visibility: 'private'
+                });
+                
+                // 打卡表单数据
+                const checkInForm = reactive({
+                    goalId: '',
+                    exerciseType: 'running',
+                    value: 0,
+                    weight: null,
+                    date: '',
+                    note: '',
+                    image: null,
+                    imagePreview: null,
+                    uploadedImageUrl: null // 添加已上传图片的URL
+                });
+                
+                const editForm = reactive({
+                    id: null,
+                    title: '',
+                    target: 0,
+                    startDate: '',
+                    endDate: '',
+                    initialWeight: null,
+                    targetWeight: null,
+                    currentWeight: null,
+                    visibility: 'private'
+                });
+                
+                const editRecordForm = reactive({
+                    id: null,
+                    exerciseType: '',
+                    value: 0,
+                    weight: null,
+                    date: '',
+                    note: ''
+                });
+                
+                // 模态框状态
+                const modal = reactive({
+                    visible: false,
+                    type: '',
+                    title: ''
+                });
+                
+                const confirmDialog = reactive({
+                    visible: false,
+                    message: '',
+                    onConfirm: function() {},
+                    onCancel: function() {
+                        confirmDialog.visible = false;
+                    }
+                });
+                
+                const alert = reactive({
+                    visible: false,
+                    message: '',
+                    type: 'info'
+                });
+                
+                // 运动类型定义（与原版保持一致）
+                const exerciseTypes = [
+                    { id: 'running', name: '跑步', unit: 'km' },
+                    { id: 'walking', name: '走路', unit: 'km' },
+                    { id: 'cycling', name: '骑车', unit: 'km' },
+                    { id: 'swimming', name: '游泳', unit: '小时' },
+                    { id: 'boxing', name: '拳击', unit: '小时' },
+                    { id: 'rowing', name: '划船', unit: 'km' },
+                    { id: 'climbing_stairs', name: '爬楼梯', unit: '小时' },
+                    { id: 'basketball', name: '篮球', unit: '小时' },
+                    { id: 'football', name: '足球', unit: '小时' },
+                    { id: 'badminton', name: '羽毛球', unit: '小时' },
+                    { id: 'table_tennis', name: '乒乓球', unit: '小时' },
+                    { id: 'tennis', name: '网球', unit: '小时' },
+                    { id: 'golf', name: '高尔夫', unit: '小时' },
+                    { id: 'billiards', name: '台球', unit: '小时' },
+                    { id: 'weight_lifting', name: '撸铁', unit: '小时' },
+                    { id: 'mountain_climbing', name: '登山', unit: 'km' }
+                ];
+                
+                // 计算属性
+                const groupedDetailRecords = computed(() => {
+                    const groups = {};
+                    detailRecords.value.forEach(record => {
+                        if (!groups[record.record_date]) {
+                            groups[record.record_date] = [];
+                        }
+                        groups[record.record_date].push(record);
+                    });
+                    
+                    // 按日期排序
+                    return Object.keys(groups)
+                        .sort()
+                        .reverse()
+                        .reduce((obj, key) => {
+                            obj[key] = groups[key];
+                            return obj;
+                        }, {});
+                });
+                
+                // 方法实现
+                const checkAuth = () => {
+                    const token = localStorage.getItem('token');
+                    const user = localStorage.getItem('currentUser');
+                    
+                    if (!token || !user) {
+                        window.location.href = '/login.html';
+                        return false;
+                    }
+                    
+                    currentUser.value = JSON.parse(user);
+                    return true;
+                };
+                
+                // 初始化日期字段
+                const initDateFields = () => {
+                    const today = new Date();
+                    const year = today.getFullYear();
+                    const month = String(today.getMonth() + 1).padStart(2, '0');
+                    const day = String(today.getDate()).padStart(2, '0');
+                    const todayStr = `${year}-${month}-${day}`;
+                    
+                    if (!newGoal.startDate) {
+                        newGoal.startDate = todayStr;
+                    }
+                    
+                    if (!newGoal.endDate) {
+                        const nextMonth = new Date();
+                        nextMonth.setMonth(nextMonth.getMonth() + 1);
+                        const nextYear = nextMonth.getFullYear();
+                        const nextMonthStr = String(nextMonth.getMonth() + 1).padStart(2, '0');
+                        const nextDay = String(nextMonth.getDate()).padStart(2, '0');
+                        newGoal.endDate = `${nextYear}-${nextMonthStr}-${nextDay}`;
+                    }
+                    
+                    // 初始化编辑表单的日期
+                    if (!editForm.startDate) {
+                        editForm.startDate = todayStr;
+                    }
+                    
+                    if (!editForm.endDate) {
+                        const nextMonth = new Date();
+                        nextMonth.setMonth(nextMonth.getMonth() + 1);
+                        const nextYear = nextMonth.getFullYear();
+                        const nextMonthStr = String(nextMonth.getMonth() + 1).padStart(2, '0');
+                        const nextDay = String(nextMonth.getDate()).padStart(2, '0');
+                        editForm.endDate = `${nextYear}-${nextMonthStr}-${nextDay}`;
+                    }
+                };
+                
+                const updateDateFields = () => {
+                    initDateFields();
+                };
+                
+                const updateGoalTitle = () => {
+                    const today = new Date();
+                    
+                    switch (newGoal.period) {
+                        case 'none':
+                            newGoal.title = '自定义运动目标';
+                            break;
+                        case 'monthly':
+                            newGoal.title = today.getFullYear() + '年' + (today.getMonth() + 1) + '月运动目标';
+                            break;
+                        case 'weekly':
+                            const weekNumber = getWeekNumber(today);
+                            newGoal.title = today.getFullYear() + '年第' + weekNumber + '周运动目标';
+                            break;
+                        case 'daily':
+                            newGoal.title = today.getFullYear() + '年' + (today.getMonth() + 1) + '月' + today.getDate() + '日运动目标';
+                            break;
+                    }
+                };
+                
+                const getWeekNumber = (date) => {
+                    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+                    const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
+                    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+                };
+                
+                const formatDateForInput = (date) => {
+                    return date.toISOString().split('T')[0];
+                };
+                
+                const formatDate = (dateString) => {
+                    const date = new Date(dateString);
+                    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+                };
+                
+                const fetchGoals = async () => {
+                    if (!checkAuth()) return;
+                    
+                    isLoadingGoals.value = true;
+                    try {
+                        // 设置当前用户
+                        window.GoalManagementModule.setCurrentUser(currentUser.value);
+                        
+                        // 获取目标列表
+                        const goalsData = await window.GoalManagementModule.fetchGoals();
+                        
+                        // 获取所有目标的进度
+                        const progressPromises = goalsData.map(goal => 
+                            fetch('/api/exercise-records?userId=' + currentUser.value.id)
+                                .then(response => response.json())
+                                .then(records => {
+                                    const progress = calculateGoalProgress(goal, records);
+                                    goalProgressMap.value[goal.id] = progress;
+                                    return { ...goal, progress };
+                                })
+                        );
+                        
+                        goals.value = await Promise.all(progressPromises);
+                    } catch (error) {
+                        console.error('获取目标列表时出错:', error);
+                        showAlert('获取目标列表失败: ' + error.message, 'error');
+                    } finally {
+                        isLoadingGoals.value = false;
+                    }
+                };
+                
+                const calculateGoalProgress = (goal, records) => {
+                    return window.GoalManagementModule.calculateGoalProgress(goal, records, exerciseTypes);
+                };
+                
+                const calculateTimeProgress = (goal) => {
+                    return window.GoalManagementModule.calculateTimeProgress(goal);
+                };
+                
+                const getPeriodText = (period) => {
+                    return window.GoalManagementModule.getPeriodText(period);
+                };
+                
+                const getGoalStatusBadge = (goal) => {
+                    return window.GoalManagementModule.getGoalStatusBadge(goal, calculateTimeProgress);
+                };
+                
+                // 显示添加目标模态框
+                const showAddGoalModal = () => {
+                    // 重置表单数据
+                    editForm.id = null;
+                    editForm.title = '';
+                    editForm.target = '';
+                    editForm.startDate = '';
+                    editForm.endDate = '';
+                    editForm.initialWeight = '';
+                    editForm.targetWeight = '';
+                    editForm.currentWeight = '';
+                    editForm.visibility = 'private';
+                    
+                    // 设置模态框状态
+                    modal.type = 'add';
+                    modal.title = '创建新目标';
+                    modal.visible = true;
+                };
+
+                // 显示编辑目标模态框
+                const showEditGoalModal = (goal) => {
+                    // 填充表单数据
+                    editForm.id = goal.id;
+                    editForm.title = goal.title;
+                    editForm.target = goal.target;
+                    editForm.startDate = goal.start_date;
+                    editForm.endDate = goal.end_date;
+                    editForm.initialWeight = goal.initial_weight;
+                    editForm.targetWeight = goal.target_weight;
+                    editForm.currentWeight = goal.current_weight;
+                    editForm.visibility = goal.visibility;
+                    
+                    // 设置模态框状态
+                    modal.type = 'edit';
+                    modal.title = '编辑目标';
+                    modal.visible = true;
+                };
+
+                // 添加目标
+                const addGoal = async () => {
+                    if (!checkAuth()) return;
+                    
+                    isAddingGoal.value = true;
+                    try {
+                        const goalData = {
+                            title: editForm.title,
+                            target: parseFloat(editForm.target),
+                            period: 'custom', // 添加period字段，默认为custom
+                            startDate: editForm.startDate,
+                            endDate: editForm.endDate,
+                            initialWeight: editForm.initialWeight ? parseFloat(editForm.initialWeight) : null,
+                            targetWeight: editForm.targetWeight ? parseFloat(editForm.targetWeight) : null,
+                            visibility: editForm.visibility,
+                            user_id: currentUser.value.id
+                        };
+                        
+                        const response = await fetch(`/api/exercise-goals?userId=${currentUser.value.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(goalData)
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                        }
+                        
+                        showAlert('目标创建成功！', 'success');
+                        closeModal();
+                        await fetchGoals();
+                    } catch (error) {
+                        console.error('创建目标时出错:', error);
+                        showAlert('创建目标失败: ' + error.message, 'error');
+                    } finally {
+                        isAddingGoal.value = false;
+                    }
+                };
+
+                // 更新目标
+                const updateGoal = async () => {
+                    if (!checkAuth()) return;
+                    
+                    isUpdatingGoal.value = true;
+                    try {
+                        const goalData = {
+                            title: editForm.title,
+                            target: parseFloat(editForm.target),
+                            period: 'custom', // 添加period字段
+                            startDate: editForm.startDate,
+                            endDate: editForm.endDate,
+                            initialWeight: editForm.initialWeight ? parseFloat(editForm.initialWeight) : null,
+                            targetWeight: editForm.targetWeight ? parseFloat(editForm.targetWeight) : null,
+                            currentWeight: editForm.currentWeight ? parseFloat(editForm.currentWeight) : null,
+                            visibility: editForm.visibility
+                        };
+                        
+                        const response = await fetch(`/api/exercise-goals/${editForm.id}?userId=${currentUser.value.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(goalData)
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                        }
+                        
+                        showAlert('目标更新成功！', 'success');
+                        closeModal();
+                        await fetchGoals();
+                    } catch (error) {
+                        console.error('更新目标时出错:', error);
+                        showAlert('更新目标失败: ' + error.message, 'error');
+                    } finally {
+                        isUpdatingGoal.value = false;
+                    }
+                };
+                
+                const getGoalStatus = (goal) => {
+                    const progress = goal.progress;
+                    const timeProgress = calculateTimeProgress(goal);
+                    
+                    if (progress.isCompleted) return 'completed';
+                    if (timeProgress.percentage > progress.percentage) return 'behind';
+                    if (timeProgress.percentage <= progress.percentage) return 'ahead';
+                    return 'normal';
+                };
+                
+                const getGoalStatusLabel = (goal) => {
+                    const status = getGoalStatus(goal);
+                    switch (status) {
+                        case 'completed': return '✅ 已完成';
+                        case 'behind': return '⚠️ 进度落后';
+                        case 'ahead': return '🚀 超前完成';
+                        default: return '🏃 进行中';
+                    }
+                };
+                
+                const calculateWeightProgressPercentage = (goal) => {
+                    if (!goal.initial_weight || !goal.target_weight) return 0;
+                    
+                    const initial = goal.initial_weight;
+                    const target = goal.target_weight;
+                    const current = goal.current_weight || initial;
+                    
+                    // 计算体重目标完成百分比
+                    if (initial > target) {
+                        // 减重目标
+                        const totalLoss = initial - target;
+                        const currentLoss = initial - current;
+                        return Math.min(Math.max((currentLoss / totalLoss) * 100, 0), 100);
+                    } else {
+                        // 增重目标
+                        const totalGain = target - initial;
+                        const currentGain = current - initial;
+                        return Math.min(Math.max((currentGain / totalGain) * 100, 0), 100);
+                    }
+                };
+                
+                const calculateWeightProgress = (goal) => {
+                    return calculateWeightProgressPercentage(goal);
+                };
+                
+                const getWeightProgressColor = (goal) => {
+                    const progress = calculateWeightProgress(goal);
+                    if (progress >= 100) return '#2ecc71'; // green
+                    if (goal.initial_weight > goal.target_weight) {
+                        // 减重目标
+                        return goal.current_weight <= goal.target_weight ? '#2ecc71' : '#e74c3c'; // green if reached, red if not
+                    } else {
+                        // 增重目标
+                        return goal.current_weight >= goal.target_weight ? '#2ecc71' : '#e74c3c'; // green if reached, red if not
+                    }
+                };
+                
+                const getExerciseTypeName = (typeId) => {
+                    const type = exerciseTypes.find(t => t.id === typeId);
+                    return type ? type.name : '未知类型';
+                };
+                
+                const getExerciseUnit = (typeId) => {
+                    const type = exerciseTypes.find(t => t.id === typeId);
+                    return type ? type.unit : '单位';
+                };
+                
+                const showCheckInModal = (goal) => {
+                    checkInForm.goalId = goal.id;
+                    checkInForm.exerciseType = 'running';
+                    checkInForm.value = 0;
+                    checkInForm.weight = null;
+                    checkInForm.date = new Date().toISOString().split('T')[0];
+                    checkInForm.note = '';
+                    checkInForm.image = null;
+                    checkInForm.imagePreview = null;
+                    checkInForm.uploadedImageUrl = null; // 重置已上传图片URL
+                    
+                    modal.type = 'checkin';
+                    modal.title = `打卡 - ${goal.title}`;
+                    modal.visible = true;
+                };
+
+                // 处理图片上传
+                const handleImageUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (file) {
+                        // 检查文件大小（最大10MB）
+                        if (file.size > 10 * 1024 * 1024) {
+                            showAlert('图片大小不能超过10MB', 'error');
+                            event.target.value = ''; // 清空文件输入
+                            return;
+                        }
+
+                        // 检查文件类型
+                        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+                        if (!allowedTypes.includes(file.type)) {
+                            showAlert('只支持JPEG、PNG、GIF、WebP和BMP格式的图片', 'error');
+                            event.target.value = ''; // 清空文件输入
+                            return;
+                        }
+
+                        // 生成预览
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            checkInForm.imagePreview = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+
+                        // 立即上传图片
+                        isUploadingImage.value = true;
+                        imageUploadProgress.value = 0;
+                        
+                        try {
+                            const formData = new FormData();
+                            formData.append('image', file);
+
+                            const xhr = new XMLHttpRequest();
+                            
+                            // 监听上传进度
+                            xhr.upload.addEventListener('progress', (e) => {
+                                if (e.lengthComputable) {
+                                    imageUploadProgress.value = Math.round((e.loaded / e.total) * 100);
+                                }
+                            });
+
+                            // 创建Promise来处理异步上传
+                            const uploadPromise = new Promise((resolve, reject) => {
+                                xhr.onload = () => {
+                                    if (xhr.status === 200) {
+                                        const response = JSON.parse(xhr.responseText);
+                                        resolve(response.imageUrl);
+                                    } else {
+                                        reject(new Error('图片上传失败'));
+                                    }
+                                };
+                                
+                                xhr.onerror = () => {
+                                    reject(new Error('网络错误'));
+                                };
+                            });
+
+                            // 发送请求
+                            xhr.open('POST', `/api/upload-image?userId=${currentUser.value.id}`);
+                            xhr.send(formData);
+
+                            // 等待上传完成
+                            checkInForm.uploadedImageUrl = await uploadPromise;
+                            checkInForm.image = file;
+                            showAlert('图片上传成功', 'success');
+                        } catch (error) {
+                            console.error('图片上传失败:', error);
+                            showAlert('图片上传失败: ' + error.message, 'error');
+                            event.target.value = ''; // 清空文件输入
+                            checkInForm.image = null;
+                            checkInForm.imagePreview = null;
+                        } finally {
+                            isUploadingImage.value = false;
+                            imageUploadProgress.value = 0;
+                        }
+                    } else {
+                        checkInForm.image = null;
+                        checkInForm.imagePreview = null;
+                        checkInForm.uploadedImageUrl = null;
+                    }
+                };
+
+                // 提交打卡
+                const submitCheckIn = async () => {
+                    if (!checkAuth()) return;
+                    
+                    isSubmittingCheckIn.value = true;
+                    try {
+                        // 如果有已上传的图片，则只需要传递图片URL
+                        if (checkInForm.uploadedImageUrl) {
+                            const recordData = {
+                                goalId: checkInForm.goalId,
+                                exerciseType: checkInForm.exerciseType,
+                                value: checkInForm.value,
+                                recordDate: checkInForm.date,
+                                note: checkInForm.note,
+                                imagePath: checkInForm.uploadedImageUrl
+                            };
+                            
+                            if (checkInForm.weight) {
+                                recordData.weight = checkInForm.weight;
+                            }
+
+                            const response = await fetch(`/api/exercise-records?userId=${currentUser.value.id}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(recordData)
+                            });
+                        } else {
+                            // 没有预先上传的图片，直接上传所有数据
+                            const formData = new FormData();
+                            formData.append('goalId', checkInForm.goalId);
+                            formData.append('exerciseType', checkInForm.exerciseType);
+                            formData.append('value', checkInForm.value);
+                            formData.append('recordDate', checkInForm.date);
+                            formData.append('note', checkInForm.note);
+                            if (checkInForm.weight) {
+                                formData.append('weight', checkInForm.weight);
+                            }
+                            if (checkInForm.image) {
+                                formData.append('image', checkInForm.image);
+                            }
+
+                            const response = await fetch(`/api/exercise-records?userId=${currentUser.value.id}`, {
+                                method: 'POST',
+                                body: formData
+                            });
+                        }
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                        }
+
+                        showAlert('打卡成功！', 'success');
+                        closeModal();
+                        
+                        // 如果有体重数据，则更新目标的当前体重
+                        if (checkInForm.weight) {
+                            await updateGoalCurrentWeight(checkInForm.goalId, checkInForm.weight);
+                        }
+                        
+                        // 刷新数据
+                        await fetchGoals();
+                    } catch (error) {
+                        console.error('打卡时出错:', error);
+                        showAlert('打卡失败: ' + error.message, 'error');
+                    } finally {
+                        isSubmittingCheckIn.value = false;
+                    }
+                };
+                
+                const showDetailsModal = async (goal) => {
+                    try {
+                        // 使用打卡管理模块获取打卡明细
+                        window.CheckInManagementModule.setCurrentUser(currentUser.value);
+                        detailRecords.value = await window.CheckInManagementModule.getCheckInDetails(goal.id);
+                        
+                        modal.visible = true;
+                        modal.type = 'details';
+                        modal.title = '打卡明细 - ' + goal.title;
+                    } catch (error) {
+                        console.error('获取打卡明细时出错:', error);
+                        showAlert('加载运动记录失败: ' + error.message, 'error');
+                    }
+                };
+                
+                const showEditRecordModal = async (record) => {
+                    try {
+                        // 使用打卡管理模块获取记录详情
+                        window.CheckInManagementModule.setCurrentUser(currentUser.value);
+                        const recordDetails = await window.CheckInManagementModule.getRecordDetails(record.id);
+                        
+                        editRecordForm.id = recordDetails.id;
+                        editRecordForm.exerciseType = recordDetails.exercise_type;
+                        editRecordForm.value = recordDetails.value;
+                        editRecordForm.weight = recordDetails.weight;
+                        editRecordForm.date = recordDetails.record_date;
+                        editRecordForm.note = recordDetails.note;
+                        
+                        modal.visible = true;
+                        modal.type = 'editRecord';
+                        modal.title = '编辑运动记录';
+                    } catch (error) {
+                        console.error('获取记录详情时出错:', error);
+                        showAlert('加载运动记录详情失败: ' + error.message, 'error');
+                    }
+                };
+                
+                const updateRecord = async () => {
+                    if (!checkAuth()) return;
+                    
+                    isUpdatingRecord.value = true;
+                    try {
+                        const recordData = {
+                            exerciseType: editRecordForm.exerciseType,
+                            value: editRecordForm.value,
+                            recordDate: editRecordForm.date,
+                            note: editRecordForm.note
+                        };
+                        
+                        // 使用打卡管理模块更新记录
+                        window.CheckInManagementModule.setCurrentUser(currentUser.value);
+                        await window.CheckInManagementModule.updateRecord(editRecordForm.id, recordData);
+                        
+                        // 如果提供了体重，更新目标的当前体重
+                        if (editRecordForm.weight !== null && !isNaN(editRecordForm.weight)) {
+                            // 获取记录关联的目标ID
+                            const recordDetails = await window.CheckInManagementModule.getRecordDetails(editRecordForm.id);
+                            if (recordDetails) {
+                                await window.CheckInManagementModule.updateGoalWeight(recordDetails.goal_id, editRecordForm.weight);
+                            }
+                        }
+                        
+                        showAlert('记录更新成功！', 'success');
+                        closeModal();
+                        
+                        // 刷新明细视图
+                        if (modal.visible && modal.type === 'details') {
+                            const currentGoalId = checkInForm.goalId;
+                            const currentGoal = goals.value.find(g => g.id == currentGoalId);
+                            if (currentGoal) {
+                                showDetailsModal(currentGoal);
+                            }
+                        }
+                        
+                        // 更新目标列表
+                        await fetchGoals();
+                    } catch (error) {
+                        console.error('更新记录时出错:', error);
+                        showAlert('更新记录失败: ' + error.message, 'error');
+                    } finally {
+                        isUpdatingRecord.value = false;
+                    }
+                };
+                
+                const deleteRecord = (record) => {
+                    showConfirm(
+                        '确认删除',
+                        '确定要删除这条打卡记录吗？此操作不可恢复！',
+                        async () => {
+                            try {
+                                // 使用打卡管理模块删除记录
+                                window.CheckInManagementModule.setCurrentUser(currentUser.value);
+                                await window.CheckInManagementModule.deleteRecord(record.id);
+                                
+                                showAlert('打卡记录删除成功！', 'success');
+                                // 刷新明细视图
+                                if (modal.visible && modal.type === 'details') {
+                                    // 获取当前详情页面对应的目标
+                                    const goalId = detailRecords.value.length > 0 ? detailRecords.value[0].goal_id : null;
+                                    if (goalId) {
+                                        const currentGoal = goals.value.find(g => g.id == goalId);
+                                        if (currentGoal) {
+                                            showDetailsModal(currentGoal);
+                                        }
+                                    }
+                                }
+                                // 更新目标列表
+                                await fetchGoals();
+                            } catch (error) {
+                                console.error('删除记录时出错:', error);
+                                showAlert('删除打卡记录失败: ' + error.message, 'error');
+                            }
+                        }
+                    );
+                };
+                
+                // 生成汇总图片
+                const exportSummaryAsImage = async () => {
+                    try {
+                        // 显示正在生成提示
+                        showAlert('正在生成长图...', 'info');
+                        
+                        // 等待提示显示
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        
+                        // 创建用于导出的临时容器
+                        const exportContainer = document.createElement('div');
+                        exportContainer.className = 'summary-export-container';
+                        exportContainer.innerHTML = `
+                            <div style="font-family: Arial, sans-serif; max-width: 800px; background: white;">
+                                <h2 style="text-align: center; color: #2c3e50; margin-bottom: 20px;">${currentGoal.value ? currentGoal.value.title : '运动目标汇总'}</h2>
+                                
+                                <div style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                        <div style="font-size: 14px; color: #6c757d;">总打卡次数</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">${summaryStats.totalRecords}</div>
+                                    </div>
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                        <div style="font-size: 14px; color: #6c757d;">累计运动量</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">${summaryStats.totalDistance.toFixed(1)} km</div>
+                                    </div>
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                        <div style="font-size: 14px; color: #6c757d;">运动类型</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">${Object.keys(summaryStats.exerciseTypeStats).length} 种</div>
+                                    </div>
+                                </div>
+                                
+                                ${summaryStats.initialWeight || summaryStats.currentWeight || summaryStats.targetWeight ? `
+                                <div style="margin-bottom: 20px;">
+                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">⚖️ 体重变化</h3>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px;">
+                                        ${summaryStats.initialWeight ? `
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                            <div style="font-size: 14px; color: #6c757d;">初始体重</div>
+                                            <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${summaryStats.initialWeight} kg</div>
+                                        </div>` : ''}
+                                        ${summaryStats.currentWeight ? `
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                            <div style="font-size: 14px; color: #6c757d;">当前体重</div>
+                                            <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${summaryStats.currentWeight} kg</div>
+                                        </div>` : ''}
+                                        ${summaryStats.targetWeight ? `
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                            <div style="font-size: 14px; color: #6c757d;">目标体重</div>
+                                            <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${summaryStats.targetWeight} kg</div>
+                                        </div>` : ''}
+                                        ${(summaryStats.initialWeight && summaryStats.currentWeight) ? `
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                            <div style="font-size: 14px; color: #6c757d;">体重变化</div>
+                                            <div style="font-size: 20px; font-weight: bold; color: ${getWeightChangeColor(summaryStats)};">
+                                                ${(summaryStats.currentWeight - summaryStats.initialWeight).toFixed(1)} kg
+                                            </div>
+                                        </div>` : ''}
+                                    </div>
+                                </div>` : ''}
+                                
+                                <div style="margin-bottom: 20px;">
+                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">🏆 运动类型分布</h3>
+                                    <div style="display: grid; gap: 10px;">
+                                        ${Object.entries(summaryStats.exerciseTypeStats).map(([typeName, stats]) => `
+                                            <div style="display: flex; justify-content: space-between; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                                                <span>${typeName}</span>
+                                                <span>${stats.count} 次 · ${stats.distance.toFixed(1)} ${stats.unit}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 20px;">
+                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">🎯 目标进度</h3>
+                                    <div style="margin-bottom: 10px;">
+                                        <span style="font-weight: bold;">完成度: </span>
+                                        <span>${summaryStats.progress.current.toFixed(1)}/${summaryStats.progress.target} km</span>
+                                        <span style="margin-left: 10px;">(${summaryStats.progress.percentage.toFixed(1)}%)</span>
+                                    </div>
+                                    <div style="height: 20px; background: #e9ecef; border-radius: 10px; overflow: hidden;">
+                                        <div style="height: 100%; width: ${Math.min(summaryStats.progress.percentage, 100)}%; 
+                                            background: ${summaryStats.progress.percentage >= 100 ? '#28a745' : summaryStats.progress.percentage >= 80 ? '#ffc107' : '#007bff'}; 
+                                            border-radius: 10px;"></div>
+                                    </div>
+                                </div>
+                                
+                                ${summaryStats.aiRecommendations.length > 0 ? `
+                                <div>
+                                    <h3 style="color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px;">🤖 AI个性化建议</h3>
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                        ${summaryStats.aiRecommendations.map(rec => `<div style="margin-bottom: 10px;">• ${rec}</div>`).join('')}
+                                    </div>
+                                </div>` : ''}
+                            </div>
+                        `;
+                        
+                        document.body.appendChild(exportContainer);
+                        
+                        // 使用html2canvas生成图片
+                        const canvas = await html2canvas(exportContainer, {
+                            scale: 2, // 提高图片质量
+                            useCORS: true,
+                            backgroundColor: '#ffffff'
+                        });
+                        
+                        // 移除临时容器
+                        document.body.removeChild(exportContainer);
+                        
+                        // 创建下载链接
+                        const link = document.createElement('a');
+                        link.href = canvas.toDataURL('image/png');
+                        link.download = `运动目标汇总_${new Date().toLocaleDateString()}.png`;
+                        link.click();
+                        
+                        showAlert('长图生成成功！', 'success');
+                    } catch (error) {
+                        console.error('生成长图失败:', error);
+                        showAlert('生成长图失败: ' + error.message, 'error');
+                    }
+                };
+                
+                // 获取体重变化颜色
+                const getWeightChangeColor = (stats) => {
+                    if (!stats.initialWeight || !stats.currentWeight) return '#2c3e50';
+                    
+                    const change = stats.currentWeight - stats.initialWeight;
+                    // 如果是减重目标
+                    if (stats.initialWeight > stats.targetWeight) {
+                        return change <= 0 ? '#28a745' : '#dc3545';
+                    } 
+                    // 如果是增重目标
+                    else if (stats.initialWeight < stats.targetWeight) {
+                        return change >= 0 ? '#28a745' : '#dc3545';
+                    }
+                    return '#2c3e50';
+                };
+                
+                const showGoalSummary = async (goal) => {
+                    try {
+                        const [goalsResponse, recordsResponse] = await Promise.all([
+                            fetch('/api/exercise-goals?userId=' + currentUser.value.id),
+                            fetch('/api/exercise-records?userId=' + currentUser.value.id)
+                        ]);
+                        
+                        if (!goalsResponse.ok || !recordsResponse.ok) {
+                            throw new Error('获取数据失败');
+                        }
+                        
+                        const [allGoals, allRecords] = await Promise.all([
+                            goalsResponse.json(),
+                            recordsResponse.json()
+                        ]);
+                        
+                        const goalRecords = allRecords.filter(record => record.goal_id == goal.id);
+                        
+                        // 分析运动类型统计
+                        const exerciseTypeStats = {};
+                        let totalDistance = 0;
+                        let totalRecords = goalRecords.length;
+                        
+                        goalRecords.forEach(record => {
+                            const exerciseType = exerciseTypes.find(type => type.id === record.exercise_type);
+                            const typeName = exerciseType ? exerciseType.name : '未知类型';
+                            const unit = exerciseType ? exerciseType.unit : 'km';
+                            
+                            // 记录原始值而非转换后的值
+                            let rawValue = record.value;
+                            
+                            if (!exerciseTypeStats[typeName]) {
+                                exerciseTypeStats[typeName] = {
+                                    count: 0,
+                                    distance: 0,
+                                    unit: unit
+                                };
+                            }
+                            
+                            exerciseTypeStats[typeName].count++;
+                            exerciseTypeStats[typeName].distance += rawValue;
+                            // 累计距离仍然使用转换后的值
+                            totalDistance += convertToDistance(record);
+                        });
+                        
+                        // 计算目标进度
+                        const progress = calculateGoalProgress(goal, allRecords);
+                        
+                        // 更新汇总统计
+                        summaryStats.exerciseTypeStats = exerciseTypeStats;
+                        summaryStats.totalDistance = totalDistance;
+                        summaryStats.totalRecords = totalRecords;
+                        summaryStats.progress = progress;
+                        summaryStats.initialWeight = goal.initial_weight;
+                        summaryStats.currentWeight = goal.current_weight;
+                        summaryStats.targetWeight = goal.target_weight;
+                        currentGoal.value = goal;
+                        
+                        // 显示模态框
+                        modal.visible = true;
+                        modal.type = 'summary';
+                        modal.title = '运动汇总 - ' + goal.title;
+                        
+                        // 异步加载AI建议
+                        loadAIRecommendations(goal, totalRecords, totalDistance, exerciseTypeStats, progress);
+                    } catch (error) {
+                        console.error('获取汇总信息时出错:', error);
+                        showAlert('加载汇总信息失败', 'error');
+                    }
+                };
+                
+                const convertToDistance = (record) => {
+                    const exerciseType = exerciseTypes.find(type => type.id === record.exercise_type);
+                    if (!exerciseType) return 0;
+                    
+                    // 应用相同的转换规则
+                    if (exerciseType.unit === '小时') {
+                        // 特殊情况：游泳 1 小时 = 10 km
+                        if (exerciseType.id === 'swimming') {
+                            return record.value * 10;
+                        } 
+                        // 默认情况：其他小时类活动 1 小时 = 5 km
+                        else {
+                            return record.value * 5;
+                        }
+                    } 
+                    // 特殊情况：骑车 10 km = 5 km 目标
+                    else if (exerciseType.id === 'cycling') {
+                        return record.value * 0.5;
+                    } 
+                    // 默认情况：公里类活动
+                    else {
+                        return record.value;
+                    }
+                };
+                
+                const loadAIRecommendations = async (goal, totalRecords, totalDistance, exerciseTypeStats, progress) => {
+                    summaryStats.aiLoading = true;
+                    summaryStats.aiRecommendations = [];
+                    
+                    try {
+                        const userData = {
+                            totalRecords: totalRecords,
+                            totalDistance: totalDistance,
+                            exerciseTypeCount: Object.keys(exerciseTypeStats).length,
+                            exerciseTypes: Object.keys(exerciseTypeStats),
+                            goalProgress: progress.percentage,
+                            goalTarget: progress.target
+                        };
+                        
+                        const aiResponse = await fetch('/api/spark/recommendations', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + localStorage.getItem('token')
+                            },
+                            body: JSON.stringify(userData)
+                        });
+                        
+                        const aiData = await aiResponse.json();
+                        if (aiData.success) {
+                            summaryStats.aiRecommendations = aiData.recommendations;
+                        }
+                    } catch (aiError) {
+                        console.error('获取AI建议失败:', aiError);
+                    } finally {
+                        summaryStats.aiLoading = false;
+                    }
+                };
+                
+                // 获取体重变化的颜色类
+                const getWeightChangeClass = (stats) => {
+                    if (!stats.initialWeight || !stats.currentWeight) return '';
+                    
+                    const change = stats.currentWeight - stats.initialWeight;
+                    // 如果是减重目标
+                    if (stats.initialWeight > stats.targetWeight) {
+                        return change <= 0 ? 'weight-change-positive' : 'weight-change-negative';
+                    } 
+                    // 如果是增重目标
+                    else if (stats.initialWeight < stats.targetWeight) {
+                        return change >= 0 ? 'weight-change-positive' : 'weight-change-negative';
+                    }
+                    return '';
+                };
+                
+                const deleteGoal = (goal) => {
+                    showConfirm(
+                        '确认删除',
+                        '确定要删除这个运动目标吗？此操作无法撤销。',
+                        async () => {
+                            try {
+                                // 使用目标管理模块删除目标
+                                window.GoalManagementModule.setCurrentUser(currentUser.value);
+                                await window.GoalManagementModule.deleteGoal(goal.id);
+                                
+                                showAlert('目标删除成功！', 'success');
+                                await fetchGoals();
+                            } catch (error) {
+                                console.error('删除目标时出错:', error);
+                                showAlert('删除目标失败: ' + error.message, 'error');
+                            }
+                        }
+                    );
+                };
+                
+                const closeModal = () => {
+                    modal.visible = false;
+                    modal.type = '';
+                    modal.title = '';
+                    // 清除图片预览和上传状态
+                    checkInForm.image = null;
+                    checkInForm.imagePreview = null;
+                    checkInForm.uploadedImageUrl = null;
+                    // 清除文件输入元素
+                    const fileInput = document.getElementById('checkin-image');
+                    if (fileInput) {
+                        fileInput.value = '';
+                    }
+                };
+                
+                const showConfirm = (title, message, onConfirm, onCancel) => {
+                    if (!onCancel) {
+                        onCancel = function() {};
+                    }
+                    
+                    confirmDialog.visible = true;
+                    confirmDialog.message = message;
+                    confirmDialog.onConfirm = function() {
+                        confirmDialog.visible = false;
+                        onConfirm();
+                    };
+                    confirmDialog.onCancel = function() {
+                        confirmDialog.visible = false;
+                        onCancel();
+                    };
+                };
+                
+                const showAlert = (message, type) => {
+                    if (!type) type = 'info';
+                    alert.visible = true;
+                    alert.message = message;
+                    alert.type = type;
+                    
+                    setTimeout(() => {
+                        alert.visible = false;
+                    }, 3000);
+                };
+                
+                const hideAlert = () => {
+                    alert.visible = false;
+                };
+                
+                const logout = () => {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('currentUser');
+                    window.location.href = '/login.html';
+                };
+                
+                // 生命周期钩子
+                onMounted(() => {
+                    if (!checkAuth()) return;
+                    
+                    initDateFields();
+                    fetchGoals();
+                });
+                
+                // 暴露给模板
+                return {
+                    // 状态
+                    isLoadingGoals,
+                    isAddingGoal,
+                    isSubmittingCheckIn,
+                    isUpdatingGoal,
+                    isUpdatingRecord,
+                    
+                    // 数据
+                    goals,
+                    detailRecords,
+                    summaryStats,
+                    currentUser,
+                    goalProgressMap,
+                    exerciseTypes,
+                    groupedDetailRecords,
+                    
+                    // 表单
+                    newGoal,
+                    checkInForm,
+                    editForm,
+                    editRecordForm,
+                    
+                    // 模态框
+                    modal,
+                    confirmDialog,
+                    alert,
+                    
+                    // 方法
+                    updateDateFields,
+                    getPeriodText,
+                    formatDate,
+                    getGoalStatus,
+                    getGoalStatusLabel,
+                    getGoalStatusBadge,
+                    calculateWeightProgress,
+                    calculateWeightProgressPercentage,
+                    getWeightProgressColor,
+                    getExerciseTypeName,
+                    getExerciseUnit,
+                    showAddGoalModal,
+                    showCheckInModal,
+                    submitCheckIn,
+                    showDetailsModal,
+                    calculateDailyTotal: (records) => {
+                        return window.CheckInManagementModule.calculateDailyTotal(records);
+                    },
+                    showEditRecordModal,
+                    updateRecord,
+                    deleteRecord,
+                    showGoalSummary,
+                    showEditGoalModal,
+                    addGoal,
+                    updateGoal,
+                    deleteGoal,
+                    closeModal,
+                    showConfirm,
+                    showAlert,
+                    hideAlert,
+                    logout,
+                    calculateTimeProgress,
+                    getWeightChangeClass,
+                    exportSummaryAsImage
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

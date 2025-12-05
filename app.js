@@ -1,11 +1,48 @@
 const express = require('express');
+const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
-const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const sparkService = require('./services/sparkService');
+
+// 配置multer用于文件上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // 确保上传目录存在
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // 生成唯一文件名
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'exercise-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// 文件过滤器 - 只允许图片
+const fileFilter = (req, file, cb) => {
+  // 检查文件类型
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('只允许上传图片文件'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB限制
+  }
+});
+
 const { 
   initializeDatabase,
   createUser,
@@ -111,7 +148,40 @@ app.use('/tools/exercise', express.static('tools/exercise'));
 app.use('/tools/exercise/src/libs', express.static('tools/exercise/src/libs'));
 app.use('/tools/roi', express.static('tools/roi'));
 
-// Routes
+// 为上传的文件提供静态资源服务
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// 图片上传接口
+app.post('/api/upload-image', upload.single('image'), (req, res) => {
+  const { userId } = req.query;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '需要提供用户ID' });
+  }
+  
+  // Check if user exists
+  findUserById(userId, (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: '数据库查询错误' });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: '没有上传文件' });
+    }
+    
+    // 返回图片URL
+    res.json({ 
+      imageUrl: '/uploads/' + req.file.filename,
+      message: '图片上传成功'
+    });
+  });
+});
+
+// 基础路由
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -580,6 +650,28 @@ app.get('/api/exercise-goals', (req, res) => {
   });
 });
 
+// 添加获取单个运动目标的路由
+app.get('/api/exercise-goals/:id', (req, res) => {
+  const { userId } = req.query;
+  const goalId = req.params.id;
+  
+  if (!userId) {
+    return res.status(400).json({ error: '需要提供用户ID' });
+  }
+  
+  getExerciseGoalById(goalId, userId, (err, goal) => {
+    if (err) {
+      return res.status(500).json({ error: '获取运动目标失败' });
+    }
+    
+    if (!goal) {
+      return res.status(404).json({ error: '运动目标未找到' });
+    }
+    
+    res.json(goal);
+  });
+});
+
 app.post('/api/exercise-goals', (req, res) => {
   const { userId } = req.query;
   
@@ -747,8 +839,14 @@ app.delete('/api/exercise-goals/:id', (req, res) => {
   
   deleteExerciseGoal(goalId, userId, (err) => {
     if (err) {
+      // 检查是否是没有找到匹配的记录
+      if (err.message === 'No matching record found') {
+        return res.status(404).json({ error: '找不到该运动目标或您没有权限删除该目标' });
+      }
+      console.error('删除运动目标失败:', err);
       return res.status(500).json({ error: '删除运动目标失败' });
     }
+    // 成功删除，返回204状态码（无内容）
     res.status(204).send();
   });
 });
@@ -791,7 +889,7 @@ app.get('/api/exercise-records/single/:id', (req, res) => {
 });
 
 // Update an exercise record
-app.put('/api/exercise-records/:id', (req, res) => {
+app.put('/api/exercise-records/:id', upload.single('image'), (req, res) => {
   const { userId } = req.query;
   const recordId = req.params.id;
   
@@ -813,7 +911,8 @@ app.put('/api/exercise-records/:id', (req, res) => {
       exerciseType: req.body.exerciseType,
       value: parseFloat(req.body.value),
       recordDate: req.body.recordDate,
-      note: req.body.note || ''
+      note: req.body.note || '',
+      imagePath: req.file ? '/uploads/' + req.file.filename : req.body.imagePath || null
     };
     
     // 验证必填字段
@@ -823,6 +922,11 @@ app.put('/api/exercise-records/:id', (req, res) => {
     
     updateExerciseRecord(recordId, userId, recordData, (err) => {
       if (err) {
+        // 检查是否是没有找到匹配的记录
+        if (err.message === 'No matching record found') {
+          return res.status(404).json({ error: '找不到该运动记录或您没有权限更新该记录' });
+        }
+        console.error('更新运动记录失败:', err);
         return res.status(500).json({ error: '更新运动记录失败' });
       }
       
@@ -951,7 +1055,7 @@ app.get('/api/exercise-records/goal/:goalId', (req, res) => {
   });
 });
 
-app.post('/api/exercise-records', (req, res) => {
+app.post('/api/exercise-records', upload.single('image'), (req, res) => {
   const { userId } = req.query;
   
   if (!userId) {
@@ -973,7 +1077,8 @@ app.post('/api/exercise-records', (req, res) => {
       exerciseType: req.body.exerciseType,
       value: parseFloat(req.body.value),
       recordDate: req.body.recordDate,
-      note: req.body.note || null
+      note: req.body.note || null,
+      imagePath: req.file ? '/uploads/' + req.file.filename : null
     };
     
     // Check if goalId is valid

@@ -1,17 +1,119 @@
+// 动态加载html2canvas库
+function loadHtml2Canvas() {
+    return new Promise((resolve, reject) => {
+        // 检查是否已经加载了html2canvas
+        if (window.html2canvas) {
+            resolve(window.html2canvas);
+            return;
+        }
+
+        // 动态创建script标签加载本地的html2canvas
+        const script = document.createElement('script');
+        script.src = './src/libs/html2canvas.min.js';
+        script.onload = () => {
+            if (window.html2canvas) {
+                console.log('html2canvas loaded successfully from local file');
+                resolve(window.html2canvas);
+            } else {
+                reject(new Error('html2canvas not available after loading'));
+            }
+        };
+        script.onerror = () => {
+            console.error('Failed to load html2canvas from local file');
+            // 如果本地加载失败，尝试CDN加载
+            const cdnScript = document.createElement('script');
+            cdnScript.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+            cdnScript.onload = () => {
+                if (window.html2canvas) {
+                    console.log('html2canvas loaded successfully from CDN');
+                    resolve(window.html2canvas);
+                } else {
+                    reject(new Error('html2canvas not available after CDN loading'));
+                }
+            };
+            cdnScript.onerror = () => {
+                reject(new Error('Failed to load html2canvas from both local and CDN sources'));
+            };
+            document.head.appendChild(cdnScript);
+        };
+        document.head.appendChild(script);// Modal module for handling modal dialogs
+const modalModule = {
+    // Show modal with title and message
+    showModal: function(title, content, type = 'info') {
+        // Try to get existing modal or create new one
+        let modal = document.getElementById('custom-modal');
+        if (!modal) {
+            modal = this.createModal();
+            document.body.appendChild(modal);
+        }
+        
+        // Update modal content
+        modal.querySelector('.modal-title').textContent = title;
+        modal.querySelector('.modal-body').textContent = content;
+        
+        // Set type (info, success, error, warning)
+        modal.className = `modal fade custom-modal modal-${type}`;
+        
+        // Show modal using Bootstrap
+        const bootstrapModal = new bootstrap.Modal(modal);
+        bootstrapModal.show();
+    },
+    
+    // Create modal element if it doesn't exist
+    createModal: function() {
+        const modal = document.createElement('div');
+        modal.id = 'custom-modal';
+        modal.className = 'modal fade';
+        modal.tabIndex = -1;
+        modal.innerHTML = `
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body"></div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        return modal;
+    },
+    
+    // Show alert using modal
+    showAlert: function(message, type = 'info') {
+        this.showModal('提示', message, type);
+    }
+};
+
+// Check authentication function
+function checkAuth() {
+    const currentUser = localStorage.getItem('currentUser');
+    if (!currentUser) {
+        showAlert('请先登录', 'error');
+        setTimeout(() => {
+            window.location.href = '/login.html';
+        }, 2000);
+        return false;
+    }
+    return true;
+}
+
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Check if user is logged in
+    // Check authentication first
     if (!checkAuth()) {
         return;
     }
 
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    // 添加检查确保currentUser存在且有id属性
     if (!currentUser || !currentUser.id) {
-        console.error('无法获取当前用户信息');
+        console.error('Invalid user data in localStorage');
         showAlert('用户信息无效，请重新登录', 'error');
-        setTimeout(() => {
-            window.location.href = '/login.html';
-        }, 2000);
         return;
     }
 
@@ -582,7 +684,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button class="btn-summary" onclick="showGoalSummary(${goal.id})">汇总</button>
                                     ${goal.user_id == currentUser.id ? `
                                         <button class="btn-edit" onclick="showEditGoalModal(${goal.id})">编辑</button>
-                                        <button class="btn-delete" onclick="deleteGoal(${goal.id})">删除</button>
+                                        <button class="btn-delete" onclick="GoalModule.deleteGoal(${goal.id})">删除</button>
                                     ` : ''}
                                 </div>
                             `;
@@ -925,6 +1027,25 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     };
 
+    // 使closeModal函数全局可用
+    window.closeModal = function() {
+        // 检查是否是关闭打卡明细模态框
+        const detailModalHeader = document.querySelector('.modal-overlay .modal-header h3');
+        if (detailModalHeader && detailModalHeader.textContent.trim().startsWith('打卡明细')) {
+            // 如果是打卡明细模态框，关闭后更新目标面板
+            window.displayGoals();
+        }
+        
+        // 调用原始的closeModal函数
+        Helpers.closeModal();
+    };
+
+    // 使closeModal函数全局可用
+    window.closeModal = function() {
+        // 调用原始的closeModal函数
+        Helpers.closeModal();
+    };
+
     // Function to close modal
     window.closeModal = function() {
         const modal = document.querySelector('.modal-overlay');
@@ -973,37 +1094,94 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000);
     };
 
-    // 初始化页面
-    window.onload = function() {
-        displayGoals();
-    };
+    // 页面加载完成后执行
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查用户是否已登录
+        if (!checkAuth()) {
+            return;
+        }
 
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        // 添加检查确保currentUser存在且有id属性
+        if (!currentUser || !currentUser.id) {
+            console.error('无法获取当前用户信息');
+            Helpers.showAlert('用户信息无效，请重新登录', 'error');
+            setTimeout(() => {
+                window.location.href = '/login.html';
+            }, 2000);
+            return;
+        }
 
-    // Delete goal
-    window.deleteGoal = function(goalId) {
-        showConfirm('确定要删除这个运动目标吗？\n\n注意：删除目标会同时删除所有相关的打卡记录，此操作不可恢复！', function(confirmed) {
-            if (confirmed) {
+        // 初始化目标表单
+        GoalModule.initializeGoalForm();
+        
+        // 页面加载完成后立即显示目标
+        DisplayModule.displayGoals();
+        
+        // 设置表单提交事件监听器
+        const goalForm = document.getElementById('goal-form');
+        if (goalForm) {
+            goalForm.addEventListener('submit', GoalModule.handleGoalSubmit);
+        }
+        
+        // 添加检查确保所有必需的DOM元素都存在
+        const requiredElements = [
+            'goal-form', 'goals-list', 'goal-period', 'goal-title', 
+            'goal-target', 'goal-start-date', 'goal-end-date'
+        ];
+        
+        const missingElements = requiredElements.filter(id => !document.getElementById(id));
+        if (missingElements.length > 0) {
+            console.warn('缺少以下必需的DOM元素:', missingElements);
+        }
+    });
+
+    // 删除目标
+    function deleteGoal(goalId) {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
+        Helpers.showConfirm(
+            '确认删除',
+            '确定要删除这个运动目标吗？此操作无法撤销。',
+            function() {
+                // 用户确认删除
                 fetch(`/api/exercise-goals/${goalId}?userId=${currentUser.id}`, {
                     method: 'DELETE'
                 })
                 .then(response => {
-                    if (response.ok) {
-                        // Refresh display
-                        displayGoals();
-                        showAlert('目标删除成功！', 'success');
-                    } else {
-                        return response.json().then(data => {
-                            throw new Error(data.error || '删除失败');
-                        });
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
+                    return response.json();
+                })
+                .then(result => {
+                    Helpers.showAlert('目标删除成功！', 'success');
+                    // 重新加载目标列表
+                    DisplayModule.displayGoals();
                 })
                 .catch(error => {
-                    console.error('Error deleting goal:', error);
-                    showAlert('删除目标失败: ' + error.message, 'error');
-                });
+                    console.error('删除目标时出错:', error);
+                    Helpers.showAlert('删除目标失败，请重试', 'error');
+                }); // 注意：这行保持不变，但上面的删除逻辑已移除
+            },
+            function() {    
+                // 用户取消删除
             }
-        });
-    };
+        );
+    }
+
+    // 使closeModal函数全局可用
+    window.closeModal = Helpers.closeModal;
+
+    // 使模块全局可用
+    window.GoalModule = GoalModule;
+    window.DisplayModule = DisplayModule;
+    window.CheckInModule = CheckInModule;
+    window.RecordModule = RecordModule;
+    window.SummaryModule = SummaryModule;
+    window.EditModule = EditModule;
+    window.Helpers = Helpers;
 
     // Edit a record
     window.editRecord = function(recordId) {
@@ -1171,12 +1349,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(response => {
                     if (response.ok) {
-                        // Refresh display
-                        const goalId = document.querySelector('#checkin-goal-id')?.value;
-                        if (goalId) {
-                            showDetailsModal(goalId);
+                        // 获取当前显示的打卡记录数量
+                        const recordElements = document.querySelectorAll('.detail-record');
+                        const recordCount = recordElements.length;
+                        
+                        // 如果只剩一条记录，删除后更新目标面板
+                        if (recordCount <= 1) {
+                            closeModal();
+                            window.displayGoals();
                         } else {
-                            displayGoals();
+                            // 否则刷新打卡明细页面
+                            const goalId = document.querySelector('#checkin-goal-id')?.value;
+                            if (goalId) {
+                                showDetailsModal(goalId);
+                            } else {
+                                displayGoals();
+                            }
                         }
                         
                         showAlert('打卡记录删除成功！', 'success');
@@ -1193,6 +1381,157 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     };
+
+    // Save edited record
+    function saveEditedRecord() {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
+        const recordId = document.getElementById('edit-record-id')?.value;
+        const exerciseType = document.getElementById('edit-exercise-type')?.value;
+        const value = parseFloat(document.getElementById('edit-value')?.value);
+        const date = document.getElementById('edit-date')?.value;
+        const note = document.getElementById('edit-note')?.value;
+        
+        if (!exerciseType || isNaN(value) || !date) {
+            showAlert('请填写完整信息', 'error');
+            return;
+        }
+        
+        // Create record data
+        const recordData = {
+            exerciseType: exerciseType,
+            value: value,
+            recordDate: date,
+            note: note
+        };
+        
+        // Send update to server
+        fetch(`/api/exercise-records/${recordId}?userId=${currentUser.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(recordData)
+        })
+        .then(response => {
+            if (response.ok) {
+                // Close modal
+                closeModal();
+                
+                // Refresh the details modal instead of the goals panel
+                const goalId = document.querySelector('#checkin-goal-id')?.value;
+                if (goalId) {
+                    showDetailsModal(goalId);
+                } else {
+                    displayGoals();
+                }
+                
+                showAlert('打卡记录更新成功！', 'success');
+            } else {
+                throw new Error('更新打卡记录失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error updating record:', error);
+            showAlert('更新打卡记录失败', 'error');
+        });
+    };
+
+    // Add a new record
+    function addNewRecord() {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
+        const exerciseType = document.getElementById('new-exercise-type')?.value;
+        const value = parseFloat(document.getElementById('new-value')?.value);
+        const date = document.getElementById('new-date')?.value;
+        const note = document.getElementById('new-note')?.value;
+        
+        if (!exerciseType || isNaN(value) || !date) {
+            showAlert('请填写完整信息', 'error');
+            return;
+        }
+        
+        // Create record data
+        const recordData = {
+            exerciseType: exerciseType,
+            value: value,
+            recordDate: date,
+            note: note
+        };
+        
+        // Send record to server
+        fetch(`/api/exercise-records?userId=${currentUser.id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(recordData)
+        })
+        .then(response => {
+            if (response.ok) {
+                // Close modal
+                closeModal();
+                
+                // Refresh display
+                const goalId = document.querySelector('#checkin-goal-id')?.value;
+                if (goalId) {
+                    showDetailsModal(goalId);
+                } else {
+                    displayGoals();
+                }
+                
+                showAlert('打卡记录添加成功！', 'success');
+                // 更新目标面板
+                window.displayGoals();
+            } else {
+                throw new Error('添加打卡记录失败');
+            }
+        })
+        .catch(error => {
+            console.error('Error adding record:', error);
+            showAlert('添加打卡记录失败', 'error');
+        });
+    };
+
+    // Display goals
+    window.displayGoals = function() {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) return;
+        
+        fetch(`/api/exercise-goals?userId=${currentUser.id}`)
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                throw new Error('获取目标列表失败');
+            }
+        })
+        .then(goals => {
+            const goalsContainer = document.getElementById('goals-container');
+            goalsContainer.innerHTML = '';
+            
+            goals.forEach(goal => {
+                const goalElement = document.createElement('div');
+                goalElement.className = 'goal';
+                goalElement.innerHTML = `
+                    <div class="goal-header">
+                        <h3>${goal.name}</h3>
+                        <button onclick="showDetailsModal('${goal.id}')">详情</button>
+                    </div>
+                    <div class="goal-progress">
+                        <div class="progress-bar" style="width: ${goal.progress}%"></div>
+                    </div>
+                `;
+                goalsContainer.appendChild(goalElement);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching goals:', error);
+            showAlert('获取目标列表失败', 'error');
+        });
+    }
 
     // Save check-in
     function saveCheckIn() {
@@ -2093,12 +2432,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // 将displayGoals函数挂载到window对象上，以便其他模块可以访问
+    window.displayGoals = displayGoals;
+
     // Initialize the page
     displayGoals();
     updateDateFields();
 });
 
-// Close modal function
+// Close modal function - 统一的关闭模态框函数
 function closeModal() {
     const modal = document.querySelector('.modal-overlay');
     if (modal && modal.parentNode) {
@@ -2106,20 +2448,10 @@ function closeModal() {
     }
 }
 
-// Authentication functions
-function checkAuth() {
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    if (!currentUser) {
-        window.location.href = '/login.html';
-        return false;
-    }
-    return true;
-}
+// 确保window上也有这个函数，以供HTML中的onclick调用
+window.closeModal = closeModal;
 
-function logout() {
-    localStorage.removeItem('currentUser');
-    window.location.href = '/login.html';
-}
+
 
 // Function to get AI-powered recommendations
 function getAIRecommendations(userData) {
@@ -2148,450 +2480,6 @@ function getAIRecommendations(userData) {
     });
 }
 
-// Simulated AI recommendations based on user data
-function getSimulatedRecommendations(userData) {
-    const recommendations = [];
-    
-    if (userData.totalRecords === 0) {
-        recommendations.push("👋 你好！看起来你这个月还没有开始运动。建议从简单的运动开始，比如每天散步30分钟，逐渐培养运动习惯。");
-        recommendations.push("📝 制定一个现实可行的运动计划，比如每周运动3次，每次30分钟。");
-        recommendations.push("👟 选择你感兴趣的运动，这样更容易坚持下去。");
-    } else {
-        // Variety recommendation
-        if (userData.exerciseTypeCount < 3) {
-            recommendations.push("🔄 你尝试的运动类型较少，建议尝试更多种类的运动，比如游泳、瑜伽或骑行，多样化的运动有助于全面提升身体素质。");
-        }
-        
-        // Frequency recommendation
-        if (userData.totalRecords < 10) {
-            recommendations.push("📅 本月运动次数较少，建议增加运动频率，每周至少进行3-4次运动。可以尝试将运动安排在固定时间，养成习惯。");
-        }
-        
-        // Volume recommendation
-        if (userData.totalDistance < 50) {
-            recommendations.push("💪 本月运动总量偏低，建议适当增加每次运动的距离或时间。可以每周增加10%的运动量，循序渐进地提升。");
-        }
-        
-        // Positive feedback
-        recommendations.push("🌟 你已经养成了运动的好习惯！继续保持，并注意运动前热身和运动后拉伸，避免运动损伤。");
-        
-        // Advanced recommendations based on user data
-        if (userData.exerciseTypeCount >= 3 && userData.totalRecords >= 10) {
-            recommendations.push("🚀 你已经是运动达人了！可以考虑挑战更高难度的运动项目，或者尝试参加马拉松等赛事。");
-        }
-        
-        // Weight-related recommendations
-        if (userData.weightChange) {
-            if (userData.weightChange > 0) {
-                recommendations.push("📈 你的体重有所上升，建议关注饮食和运动的平衡，可以增加有氧运动，如跑步、骑车等。");
-            } else if (userData.weightChange < 0) {
-                recommendations.push("📉 你的体重有所下降，继续保持健康的运动习惯！注意营养摄入，避免过度减重。");
-            }
-        }
-        
-        if (userData.distanceToTarget) {
-            if (userData.distanceToTarget > 2) {
-                if (userData.currentWeight > userData.targetWeight) {
-                    recommendations.push("🎯 你距离目标体重还有一定距离，建议增加有氧运动，如跑步、骑车等，并控制饮食热量摄入。");
-                } else {
-                    recommendations.push("🎯 你已经超过目标体重，建议适当增加力量训练并关注营养摄入，保持健康体重。");
-                }
-            } else {
-                recommendations.push("🎉 恭喜你接近或达到目标体重！继续保持良好的运动和饮食习惯。");
-            }
-        }
-        
-        // Goal progress recommendations
-        if (userData.goalProgress !== undefined) {
-            if (userData.goalProgress < 30) {
-                recommendations.push("🏁 你的目标完成度还比较低，不要气馁，制定小目标逐步完成更容易获得成就感。");
-            } else if (userData.goalProgress >= 30 && userData.goalProgress < 70) {
-                recommendations.push("🏁 你的目标完成度已经过半，继续保持这个节奏，相信你一定能够达成目标！");
-            } else if (userData.goalProgress >= 70 && userData.goalProgress < 100) {
-                recommendations.push("🏆 你已经接近完成目标了，最后的冲刺阶段更要坚持，胜利就在眼前！");
-            } else if (userData.goalProgress >= 100) {
-                recommendations.push("🏅 恭喜你完成了运动目标！为自己设定一个新的挑战吧。");
-            }
-        }
-    }
-    
-    return Promise.resolve(recommendations);
-}
 
-// 导出汇总为图片
-window.exportSummaryToImage = function() {
-    const exportBtn = document.getElementById("export-image-btn");
-    if (!exportBtn) return;
-    
-    // 保存原始按钮状态
-    const originalText = exportBtn.textContent;
-    exportBtn.textContent = "正在导出...";
-    exportBtn.disabled = true;
-    
-    // 等待所有内容加载完成
-    waitForAllContent()
-        .then(() => {
-            // 检查html2canvas是否已加载
-            if (typeof html2canvas === 'undefined') {
-                throw new Error('html2canvas库未加载');
-            }
-            
-            // 获取模态框元素
-            const modalOverlay = document.querySelector(".modal-overlay");
-            const modalBody = document.querySelector(".modal-body");
-            
-            if (!modalOverlay || !modalBody) {
-                throw new Error("无法找到模态框元素");
-            }
-            
-            // 创建一个临时的完整内容容器
-            const tempContainer = document.createElement('div');
-            tempContainer.style.position = 'absolute';
-            tempContainer.style.left = '-9999px';
-            tempContainer.style.width = '800px'; // 固定宽度
-            tempContainer.style.backgroundColor = '#fff';
-            tempContainer.style.padding = '20px';
-            tempContainer.style.boxSizing = 'border-box';
-            tempContainer.style.zIndex = '-1000';
-            tempContainer.style.fontFamily = 'Arial, sans-serif';
-            
-            // 克隆模态框内容
-            const clonedContent = modalBody.cloneNode(true);
-            clonedContent.style.maxHeight = 'none';
-            clonedContent.style.overflow = 'visible';
-            clonedContent.style.height = 'auto';
-            
-            // 移除不需要的元素（如关闭按钮等）
-            const closeButtons = clonedContent.querySelectorAll('.close-modal, .modal-close, .btn-close');
-            closeButtons.forEach(btn => {
-                try {
-                    if (btn.parentNode) {
-                        btn.parentNode.removeChild(btn);
-                    }
-                } catch (e) {
-                    console.warn("移除关闭按钮时出错:", e);
-                }
-            });
-            
-            // 确保所有子元素可见并强制显示
-            const allElements = clonedContent.querySelectorAll('*');
-            allElements.forEach(el => {
-                if (el) {
-                    // 移除隐藏类和样式
-                    el.classList.remove('hidden', 'invisible');
-                    el.style.visibility = 'visible';
-                    el.style.display = el.style.display === 'none' ? 'block' : el.style.display;
-                    
-                    // 确保加载提示被隐藏
-                    if (el.classList.contains('loading') || 
-                        (el.textContent && el.textContent.includes('加载中'))) {
-                        el.style.display = 'none';
-                    }
-                }
-            });
-            
-            // 特殊处理加载元素
-            const loadingElements = clonedContent.querySelectorAll('.loading, .ai-loading');
-            loadingElements.forEach(el => {
-                if (el) {
-                    el.style.display = 'none';
-                }
-            });
-            
-            // 安全地添加到临时容器
-            try {
-                if (tempContainer) {
-                    tempContainer.appendChild(clonedContent);
-                }
-            } catch (e) {
-                console.error("添加克隆内容到临时容器时出错:", e);
-                throw new Error("创建导出内容失败");
-            }
-            
-            // 安全地添加到body
-            try {
-                if (document.body && tempContainer) {
-                    document.body.appendChild(tempContainer);
-                } else {
-                    throw new Error("无法访问document.body或临时容器");
-                }
-            } catch (e) {
-                console.error("添加临时容器到document.body时出错:", e);
-                // 清理已创建的元素
-                if (tempContainer && tempContainer.parentNode) {
-                    tempContainer.parentNode.removeChild(tempContainer);
-                }
-                throw new Error("无法将导出内容添加到页面");
-            }
-            
-            // 等待DOM更新
-            return new Promise(resolve => {
-                // 增加延迟确保所有样式和内容都已正确应用
-                setTimeout(() => {
-                    resolve({
-                        tempContainer,
-                        originalText,
-                        exportBtn
-                    });
-                }, 300);
-            });
-        })
-        .then(({tempContainer, originalText, exportBtn}) => {
-            // 执行截图
-            return html2canvas(tempContainer, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#fff',
-                logging: false,
-                width: tempContainer.scrollWidth,
-                height: tempContainer.scrollHeight
-            }).then(canvas => {
-                // 清理临时容器
-                try {
-                    if (tempContainer && tempContainer.parentNode) {
-                        tempContainer.parentNode.removeChild(tempContainer);
-                    }
-                } catch (e) {
-                    console.warn("清理临时容器时出错:", e);
-                }
-                return { canvas, originalText, exportBtn };
-            }).catch(error => {
-                // 清理临时容器
-                try {
-                    if (tempContainer && tempContainer.parentNode) {
-                        tempContainer.parentNode.removeChild(tempContainer);
-                    }
-                } catch (e) {
-                    console.warn("清理临时容器时出错:", e);
-                }
-                throw error;
-            });
-        })
-        .then(({canvas, originalText, exportBtn}) => {
-            // 转换为blob并下载
-            return new Promise((resolve, reject) => {
-                canvas.toBlob(blob => {
-                    if (!blob) {
-                        reject(new Error("图片生成失败"));
-                        return;
-                    }
-                    
-                    // 创建文件名
-                    const goalTitleElement = document.querySelector(".modal-header h3");
-                    const goalTitle = goalTitleElement && goalTitleElement.textContent ? 
-                        goalTitleElement.textContent.replace(" - 汇总", "") : "运动目标";
-                    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-                    const filename = `${goalTitle}_运动汇总_${dateStr}.png`;
-                    
-                    // 下载文件
-                    downloadBlob(blob, filename);
-                    resolve({originalText, exportBtn});
-                }, 'image/png', 0.9); // 设置质量参数
-            });
-        })
-        .then(({originalText, exportBtn}) => {
-            showAlert("图片导出成功！", "success");
-        })
-        .catch(error => {
-            console.error("导出图片失败:", error);
-            showAlert("导出图片失败: " + (error.message || "未知错误"), "error");
-        })
-        .finally(() => {
-            // 恢复按钮状态
-            try {
-                if (exportBtn) {
-                    exportBtn.textContent = originalText;
-                    exportBtn.disabled = false;
-                }
-            } catch (e) {
-                console.warn("恢复按钮状态时出错:", e);
-            }
-        });
-};
 
-// 等待所有内容加载完成
-function waitForAllContent() {
-    return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const maxAttempts = 50; // 增加到最多等待25秒
-        
-        function checkContent() {
-            attempts++;
-            
-            try {
-                // 检查是否还有"加载中"元素
-                let hasLoading = false;
-                try {
-                    const loadingElements = document.querySelectorAll(".loading, .ai-loading");
-                    
-                    for (let i = 0; i < loadingElements.length; i++) {
-                        const el = loadingElements[i];
-                        // 检查元素是否存在且包含加载中文本
-                        if (el && el.textContent) {
-                            const text = el.textContent.trim();
-                            if (text.includes("加载中") || 
-                                text.includes("正在生成") ||
-                                text.includes("分析中") ||
-                                text.includes("生成中") ||
-                                text.includes("请稍候") ||
-                                text.includes("处理中")) {
-                                hasLoading = true;
-                                break;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn("检查加载状态时出错:", e);
-                }
-                
-                // 检查AI建议区域是否已填充内容
-                let aiContentReady = false;
-                try {
-                    const aiRecommendations = document.querySelector(".ai-recommendations");
-                    if (aiRecommendations) {
-                        // 检查是否有实际内容（不仅仅是空的容器）
-                        const hasActualContent = aiRecommendations.children.length > 0 || 
-                                                 (aiRecommendations.textContent && 
-                                                  aiRecommendations.textContent.trim().length > 10); // 至少10个字符才算有内容
-                        aiContentReady = hasActualContent;
-                    }
-                } catch (e) {
-                    console.warn("检查AI内容时出错:", e);
-                }
-                
-                // 检查运动记录统计是否已填充
-                let statsReady = false;
-                try {
-                    const exerciseStats = document.querySelector(".summary-stats");
-                    if (exerciseStats) {
-                        // 检查是否有实际的统计内容
-                        statsReady = exerciseStats.children.length > 0;
-                    }
-                } catch (e) {
-                    console.warn("检查运动统计数据时出错:", e);
-                }
-                
-                // 检查图表是否已渲染
-                let chartsReady = false;
-                try {
-                    const chartContainers = document.querySelectorAll(".chart-container");
-                    if (chartContainers.length > 0) {
-                        // 检查图表容器中是否有canvas或其他内容
-                        for (let i = 0; i < chartContainers.length; i++) {
-                            if (chartContainers[i].children.length > 0) {
-                                chartsReady = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        // 如果没有图表容器，就不把图表作为必要条件
-                        chartsReady = true;
-                    }
-                } catch (e) {
-                    console.warn("检查图表时出错:", e);
-                    chartsReady = true; // 出错时假设图表已就绪
-                }
-                
-                // 判断是否准备好导出
-                // 条件1: 没有加载中的元素
-                // 条件2: AI内容已准备好（如果有AI区域的话）
-                // 条件3: 统计数据已准备好
-                // 条件4: 图表已准备好
-                const isReady = !hasLoading && statsReady && chartsReady && (aiContentReady || !document.querySelector(".ai-recommendations"));
-                
-                // 如果准备好了或者尝试次数超过最大次数，则继续
-                if (isReady || attempts >= maxAttempts) {
-                    if (attempts >= maxAttempts) {
-                        console.warn("内容加载超时，将继续导出当前内容");
-                    }
-                    resolve();
-                    return;
-                }
-                
-                // 继续检查
-                setTimeout(checkContent, 500);
-            } catch (error) {
-                console.error("检查内容加载状态时出错:", error);
-                // 出错时仍然继续，避免阻塞导出功能
-                resolve();
-            }
-        }
-        
-        // 开始检查
-        try {
-            checkContent();
-        } catch (e) {
-            console.error("启动内容检查时出错:", e);
-            resolve(); // 出错时直接继续
-        }
-    });
-}
-
-// 下载Blob的辅助函数
-function downloadBlob(blob, filename) {
-    try {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.style.display = 'none';
-        
-        // 添加到页面并点击（加强元素存在性检查）
-        if (document.body) {
-            try {
-                document.body.appendChild(link);
-                // 兼容性处理
-                if (link.click) {
-                    link.click();
-                } else if (document.createEvent) {
-                    const event = document.createEvent('MouseEvents');
-                    event.initEvent('click', true, true);
-                    link.dispatchEvent(event);
-                }
-                
-                // 延迟清理以确保下载触发
-                setTimeout(() => {
-                    try {
-                        if (link.parentNode) {
-                            link.parentNode.removeChild(link);
-                        }
-                        URL.revokeObjectURL(url);
-                    } catch (e) {
-                        console.warn("清理下载链接时出错:", e);
-                    }
-                }, 100);
-            } catch (e) {
-                console.error("添加或点击下载链接时出错:", e);
-                // 清理可能已创建但未正确添加的元素
-                try {
-                    if (link && link.parentNode) {
-                        link.parentNode.removeChild(link);
-                    }
-                    URL.revokeObjectURL(url);
-                } catch (cleanupError) {
-                    console.warn("清理下载链接时出错:", cleanupError);
-                }
-                throw e;
-            }
-        } else {
-            // fallback方案
-            try {
-                window.open(url, '_blank');
-                URL.revokeObjectURL(url);
-            } catch (e) {
-                console.error("Fallback下载方案失败:", e);
-                // 最后的fallback
-                showAlert("无法自动下载文件，请手动保存图片", "warning");
-            }
-        }
-    } catch (error) {
-        console.error("下载文件时出错:", error);
-        showAlert("下载文件时出错，请手动保存图片: " + (error.message || ""), "error");
-    }
-}
-
-// 为导出按钮添加事件监听器
-document.addEventListener('click', function(event) {
-    // 导出图片功能已移除，保留空的事件监听器以避免错误
-});
 

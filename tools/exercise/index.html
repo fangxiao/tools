@@ -521,6 +521,19 @@
             color: #333;
         }
         
+        .btn-export {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #777;
+            margin-right: 10px;
+        }
+        
+        .btn-export:hover {
+            color: #333;
+        }
+        
         .modal-body {
             padding: 25px;
             flex: 1;
@@ -603,6 +616,57 @@
         .exercise-type-value {
             color: #3498db;
             font-weight: 500;
+        }
+        
+        /* 记录详情样式 */
+        .records-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .record-item {
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            background-color: #fff;
+        }
+        
+        .record-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .record-date {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .record-type {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .record-details {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .record-value {
+            font-weight: 600;
+            color: #3498db;
+        }
+        
+        .record-weight {
+            color: #9b59b6;
+        }
+        
+        .record-note {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            font-style: italic;
         }
         
         /* 响应式设计 */
@@ -741,6 +805,30 @@
     
     <script src="/auth.js"></script>
     <script src="/nav.js"></script>
+    <script src="src/libs/html2canvas.min.js"></script>
+    <script src="src/utils/helpers.js"></script>
+
+    <!-- Modules -->
+    <script src="src/modules/goalModule.js"></script>
+    <script src="src/modules/displayModule.js"></script>
+    <script src="src/modules/checkInModule.js"></script>
+    <script src="src/modules/recordModule.js"></script>
+    <script src="src/modules/summaryModule.js"></script>
+    <script src="src/modules/editModule.js"></script>
+    <script src="src/modules/modalModule.js"></script>
+
+    <!-- Main Script -->
+    <script>
+        // 确保模块初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof GoalModule !== 'undefined' && GoalModule.initialize) {
+                console.log('Initializing GoalModule');
+                GoalModule.initialize();
+            } else {
+                console.error('GoalModule not found or not properly initialized');
+            }
+        });
+    </script>
     <script src="script.js"></script>
 </body>
 </html>

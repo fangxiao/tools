@@ -1,0 +1,442 @@
+/* Vue 3 版本的额外样式 */
+[v-cloak] {
+    display: none;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+}
+
+.error-message {
+    color: #e74c3c;
+    background-color: #fdf2f2;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.success-message {
+    color: #27ae60;
+    background-color: #f2fdf2;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* 目标卡片样式 */
+.goals-grid {
+    display: grid;
+    gap: 25px;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    justify-content: center;
+}
+
+.goal-card {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 25px;
+    background-color: #fafafa;
+    transition: box-shadow 0.3s;
+    position: relative;
+}
+
+.goal-card:hover {
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.goal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.goal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.goal-meta {
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    color: #666;
+}
+
+.goal-period {
+    font-weight: 600;
+}
+
+.goal-dates {
+    font-size: 13px;
+}
+
+.goal-badge {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.goal-badge-completed {
+    background-color: #2ecc71;
+    color: white;
+}
+
+.goal-badge-failed {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.stamp {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 5px 10px;
+    background-color: #2ecc71;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 3px;
+    transform: rotate(15deg);
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+
+.stamp-weight-goal-completed {
+    background-color: #9b59b6;
+}
+
+.stamp.single-stamp {
+    right: 10px;
+}
+
+.goal-details {
+    margin-bottom: 25px;
+}
+
+.detail-row {
+    display: flex;
+    margin-bottom: 12px;
+}
+
+.detail-label {
+    font-weight: 600;
+    width: 120px;
+    color: #555;
+}
+
+.detail-value {
+    flex: 1;
+    color: #333;
+}
+
+.goal-progress-section {
+    margin-bottom: 20px;
+}
+
+.progress-info {
+    margin-bottom: 8px;
+    font-size: 15px;
+    color: #555;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.progress-label {
+    font-weight: 600;
+}
+
+.progress-value {
+    font-weight: 600;
+}
+
+.progress-percent {
+    color: #777;
+}
+
+.progress-bar-container {
+    height: 12px;
+    background-color: #ecf0f1;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #34495e;
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+
+.progress-bar-warning {
+    background-color: #f39c12;
+}
+
+.progress-bar-success {
+    background-color: #2ecc71;
+}
+
+.weight-progress {
+    margin-top: 15px;
+}
+
+.reminder-banner {
+    background-color: #f1c40f;
+    color: #fff;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 15px 0;
+    font-weight: 500;
+    text-align: center;
+}
+
+.goal-status {
+    margin: 15px 0;
+    text-align: center;
+    font-weight: 600;
+}
+
+.status-completed {
+    color: #27ae60;
+}
+
+.status-behind {
+    color: #e74c3c;
+}
+
+.status-ahead {
+    color: #2980b9;
+}
+
+.status-normal {
+    color: #f39c12;
+}
+
+.goal-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.btn-use {
+    background-color: #3498db;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-use:hover {
+    background-color: #2980b9;
+}
+
+.btn-details {
+    background-color: #9b59b6;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-details:hover {
+    background-color: #8e44ad;
+}
+
+.btn-summary {
+    background-color: #f39c12;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-summary:hover {
+    background-color: #d35400;
+}
+
+.btn-edit {
+    background-color: #3498db;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-edit:hover {
+    background-color: #2980b9;
+}
+
+.btn-delete {
+    background-color: #e74c3c;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-delete:hover {
+    background-color: #c0392b;
+}
+
+.btn-edit-small, .btn-delete-small {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 3px;
+    margin-left: 5px;
+}
+
+/* 汇总模态框样式 */
+.summary-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 5px;
+    background-color: #fafafa;
+}
+
+.summary-section h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #2c3e50;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.summary-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.stat-item {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 10px;
+    background-color: white;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* 新增体重统计样式 */
+.weight-stats {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.weight-change-positive {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.weight-change-negative {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* 生成长图按钮样式 */
+.modal-actions {
+    text-align: right;
+    margin-bottom: 15px;
+}
+
+.btn-export-image {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-export-image:hover {
+    background-color: #138496;
+}
+
+/* 用于生成图片的临时容器 */
+.summary-export-container {
+    position: fixed;
+    left: -9999px;
+    top: -9999px;
+    background: white;
+    padding: 20px;
+    width: 800px;
+    z-index: -1;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #7f8c8d;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.exercise-type-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.type-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.type-name {
+    font-weight: 500;
+}
+
+.type-details {
+    display: flex;
+    gap: 15px;
+}
+
+.goal-progress-info {
+    margin-top: 10px;
+}
+
+.motivational-message {
+    background-color: #e8f4fc;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #3498db;
+}
+
+.ai-recommendations {
+    background-color: #f0f8ff;
+    border-left: 4px solid #9b59b6;
+}
+
+.ai-loading {
+    color: #7f8c8d;
+    font-style: italic;
+}

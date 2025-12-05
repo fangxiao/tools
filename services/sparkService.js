@@ -52,7 +52,8 @@ class SparkService {
             }, {
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Host': 'spark-api-open.xf-yun.com'
                 }
             });
 
@@ -148,6 +149,13 @@ class SparkService {
      * 测试API连接
      */
     async testConnection() {
+        if (!this.isAvailable()) {
+            return {
+                success: false,
+                message: 'API密钥未设置'
+            };
+        }
+
         try {
             const response = await axios.post(this.apiUrl, {
                 model: this.model,
